@@ -14,6 +14,7 @@ from torch_utils.ops import conv2d_resample
 from torch_utils.ops import upfirdn2d
 from torch_utils.ops import bias_act
 from torch_utils.ops import fma
+from torch.nn import Softmax2d
 
 #----------------------------------------------------------------------------
 
@@ -326,6 +327,28 @@ class ToRGBLayer(torch.nn.Module):
 #----------------------------------------------------------------------------
 
 @persistence.persistent_class
+class ToSegmentationLayer(torch.nn.Module):
+    def __init__(self, in_channels, out_channels, w_dim, kernel_size=1, conv_clamp=None, channels_last=False):
+        super().__init__()
+        self.conv_clamp = conv_clamp
+        self.affine = FullyConnectedLayer(w_dim, in_channels, bias_init=1)
+        memory_format = torch.channels_last if channels_last else torch.contiguous_format
+        self.weight = torch.nn.Parameter(torch.randn([out_channels, in_channels, kernel_size, kernel_size]).to(memory_format=memory_format))
+        self.bias = torch.nn.Parameter(torch.zeros([out_channels]))
+        self.weight_gain = 1 / np.sqrt(in_channels * (kernel_size ** 2))
+
+    def forward(self, x, w, fused_modconv=True):
+        styles = self.affine(w) * self.weight_gain
+        x = modulated_conv2d(x=x, weight=self.weight, styles=styles, demodulate=False, fused_modconv=fused_modconv)
+        x = bias_act.bias_act(x, self.bias.to(x.dtype), clamp=self.conv_clamp)
+        x = Softmax2d()(x)
+
+        return x
+
+
+#----------------------------------------------------------------------------
+
+@persistence.persistent_class
 class SynthesisBlock(torch.nn.Module):
     def __init__(self,
         in_channels,                        # Number of input channels, 0 = first block.
@@ -334,6 +357,7 @@ class SynthesisBlock(torch.nn.Module):
         resolution,                         # Resolution of this block.
         img_channels,                       # Number of output color channels.
         is_last,                            # Is this the last block?
+        segmentation_channels = None,       # Number of segmentation channels (only used for try-on)
         architecture        = 'skip',       # Architecture: 'orig', 'skip', 'resnet'.
         resample_filter     = [1,3,3,1],    # Low-pass filter to apply when resampling activations.
         conv_clamp          = None,         # Clamp the output of convolution layers to +-X, None = disable clamping.
@@ -341,7 +365,7 @@ class SynthesisBlock(torch.nn.Module):
         fp16_channels_last  = False,        # Use channels-last memory format with FP16?
         **layer_kwargs,                     # Arguments for SynthesisLayer.
     ):
-        assert architecture in ['orig', 'skip', 'resnet']
+        assert architecture in ['orig', 'skip', 'resnet', 'resnet-segmentation']
         super().__init__()
         self.in_channels = in_channels
         self.w_dim = w_dim
@@ -354,6 +378,7 @@ class SynthesisBlock(torch.nn.Module):
         self.register_buffer('resample_filter', upfirdn2d.setup_filter(resample_filter))
         self.num_conv = 0
         self.num_torgb = 0
+        self.num_tosegmentation = 0
 
         if in_channels == 0:
             self.const = torch.nn.Parameter(torch.randn([out_channels, resolution, resolution]))
@@ -371,6 +396,12 @@ class SynthesisBlock(torch.nn.Module):
             self.torgb = ToRGBLayer(out_channels, img_channels, w_dim=w_dim,
                 conv_clamp=conv_clamp, channels_last=self.channels_last)
             self.num_torgb += 1
+
+            # For the last block of the resnet-segmentation network we also need to output segmentation labels
+            if architecture == 'resnet-segmentation':
+                self.tosegmentation = ToSegmentationLayer(out_channels, segmentation_channels, w_dim=w_dim,
+                    conv_clamp=conv_clamp, channels_last=self.channels_last)
+                self.num_tosegmentation += 1
 
         if in_channels != 0 and architecture == 'resnet':
             self.skip = Conv2dLayer(in_channels, out_channels, kernel_size=1, bias=False, up=2,
@@ -409,10 +440,19 @@ class SynthesisBlock(torch.nn.Module):
         if img is not None:
             misc.assert_shape(img, [None, self.img_channels, self.resolution // 2, self.resolution // 2])
             img = upfirdn2d.upsample2d(img, self.resample_filter)
+
         if self.is_last or self.architecture == 'skip':
-            y = self.torgb(x, next(w_iter), fused_modconv=fused_modconv)
-            y = y.to(dtype=torch.float32, memory_format=torch.contiguous_format)
-            img = img.add_(y) if img is not None else y
+            w_temp = next(w_iter)
+            rgb = self.torgb(x, w_temp, fused_modconv=fused_modconv)
+            rgb = rgb.to(dtype=torch.float32, memory_format=torch.contiguous_format)
+
+            if self.architecture == 'resnet-segmentation':
+                segmentation = self.tosegmentation(x, w_temp, fused_modconv=fused_modconv)
+                img = torch.cat((rgb, segmentation), dim=1)
+
+
+            else:
+                img = img.add_(rgb) if img is not None else rgb
 
         assert x.dtype == dtype
         assert img is None or img.dtype == torch.float32

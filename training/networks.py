@@ -357,7 +357,7 @@ class SynthesisBlock(torch.nn.Module):
         resolution,                         # Resolution of this block.
         img_channels,                       # Number of output color channels.
         is_last,                            # Is this the last block?
-        segmentation_channels = None,       # Number of segmentation channels (only used for try-on)
+        segmentation_channels,       # Number of segmentation channels (only used for try-on)
         architecture        = 'skip',       # Architecture: 'orig', 'skip', 'resnet'.
         resample_filter     = [1,3,3,1],    # Low-pass filter to apply when resampling activations.
         conv_clamp          = None,         # Clamp the output of convolution layers to +-X, None = disable clamping.
@@ -371,6 +371,7 @@ class SynthesisBlock(torch.nn.Module):
         self.w_dim = w_dim
         self.resolution = resolution
         self.img_channels = img_channels
+        self.segmentation_channels = segmentation_channels
         self.is_last = is_last
         self.architecture = architecture
         self.use_fp16 = use_fp16
@@ -395,13 +396,15 @@ class SynthesisBlock(torch.nn.Module):
         if is_last or architecture == 'skip':
             self.torgb = ToRGBLayer(out_channels, img_channels, w_dim=w_dim,
                 conv_clamp=conv_clamp, channels_last=self.channels_last)
+            self.tosegmentation = ToSegmentationLayer(out_channels, segmentation_channels, w_dim=w_dim,
+                                                      conv_clamp=conv_clamp, channels_last=self.channels_last)
+            self.num_tosegmentation += 1
             self.num_torgb += 1
 
-            # For the last block of the resnet-segmentation network we also need to output segmentation labels
-            if architecture == 'resnet-segmentation':
-                self.tosegmentation = ToSegmentationLayer(out_channels, segmentation_channels, w_dim=w_dim,
-                    conv_clamp=conv_clamp, channels_last=self.channels_last)
-                self.num_tosegmentation += 1
+        if is_last:
+            self.eps = torch.Tensor([1e-8])
+            self.zerotensor = torch.zeros(1)
+
 
         if in_channels != 0 and architecture == 'resnet':
             self.skip = Conv2dLayer(in_channels, out_channels, kernel_size=1, bias=False, up=2,
@@ -438,21 +441,32 @@ class SynthesisBlock(torch.nn.Module):
 
         # ToRGB.
         if img is not None:
-            misc.assert_shape(img, [None, self.img_channels, self.resolution // 2, self.resolution // 2])
+            misc.assert_shape(img, [None, self.img_channels + self.segmentation_channels, self.resolution // 2, self.resolution // 2])
             img = upfirdn2d.upsample2d(img, self.resample_filter)
 
         if self.is_last or self.architecture == 'skip':
             w_temp = next(w_iter)
             rgb = self.torgb(x, w_temp, fused_modconv=fused_modconv)
             rgb = rgb.to(dtype=torch.float32, memory_format=torch.contiguous_format)
+            segmentation = self.tosegmentation(x, w_temp, fused_modconv=fused_modconv)
+            newImg = torch.cat((rgb, segmentation), dim=1)
+            img = img.add_(newImg) if img is not None else newImg
 
-            if self.architecture == 'resnet-segmentation':
-                segmentation = self.tosegmentation(x, w_temp, fused_modconv=fused_modconv)
-                img = torch.cat((rgb, segmentation), dim=1)
+            if self.is_last:
+                originalSegmentation = img[:, 3:]
+                maxs = torch.max(originalSegmentation, dim=1)[0].unsqueeze(1)
+                afterSubtraction = originalSegmentation - maxs + self.eps
+                finalArray = torch.max(self.zerotensor, afterSubtraction) / self.eps
+
+                # Alternative path to obtain 1s in the max position, but unfortunately eq function is not differentiable
+                # Can still be used to verify our computations are correct (and we don't have underflow)
+                eqs = torch.eq(originalSegmentation, maxs)
+
+                assert torch.all(torch.eq(finalArray, eqs)).item()
+
+                img[:, 3:] = finalArray
 
 
-            else:
-                img = img.add_(rgb) if img is not None else rgb
 
         assert x.dtype == dtype
         assert img is None or img.dtype == torch.float32
@@ -466,6 +480,7 @@ class SynthesisNetwork(torch.nn.Module):
         w_dim,                      # Intermediate latent (W) dimensionality.
         img_resolution,             # Output image resolution.
         img_channels,               # Number of color channels.
+        segmentation_channels,      # Number of classes to do semantic segmentation over.
         channel_base    = 32768,    # Overall multiplier for the number of channels.
         channel_max     = 512,      # Maximum number of channels in any layer.
         num_fp16_res    = 0,        # Use FP16 for the N highest resolutions.
@@ -477,6 +492,7 @@ class SynthesisNetwork(torch.nn.Module):
         self.img_resolution = img_resolution
         self.img_resolution_log2 = int(np.log2(img_resolution))
         self.img_channels = img_channels
+        self.segmentation_channels = segmentation_channels
         self.block_resolutions = [2 ** i for i in range(2, self.img_resolution_log2 + 1)]
         channels_dict = {res: min(channel_base // res, channel_max) for res in self.block_resolutions}
         fp16_resolution = max(2 ** (self.img_resolution_log2 + 1 - num_fp16_res), 8)
@@ -488,7 +504,7 @@ class SynthesisNetwork(torch.nn.Module):
             use_fp16 = (res >= fp16_resolution)
             is_last = (res == self.img_resolution)
             block = SynthesisBlock(in_channels, out_channels, w_dim=w_dim, resolution=res,
-                img_channels=img_channels, is_last=is_last, use_fp16=use_fp16, **block_kwargs)
+                img_channels=img_channels, segmentation_channels= segmentation_channels, is_last=is_last, use_fp16=use_fp16, **block_kwargs)
             self.num_ws += block.num_conv
             if is_last:
                 self.num_ws += block.num_torgb
@@ -521,6 +537,7 @@ class Generator(torch.nn.Module):
         w_dim,                      # Intermediate latent (W) dimensionality.
         img_resolution,             # Output resolution.
         img_channels,               # Number of output color channels.
+        segmentation_channels,      # Number of classes to do semantic segmentation over.
         mapping_kwargs      = {},   # Arguments for MappingNetwork.
         synthesis_kwargs    = {},   # Arguments for SynthesisNetwork.
     ):
@@ -530,7 +547,8 @@ class Generator(torch.nn.Module):
         self.w_dim = w_dim
         self.img_resolution = img_resolution
         self.img_channels = img_channels
-        self.synthesis = SynthesisNetwork(w_dim=w_dim, img_resolution=img_resolution, img_channels=img_channels, **synthesis_kwargs)
+        self.segmentation_channels = segmentation_channels
+        self.synthesis = SynthesisNetwork(w_dim=w_dim, img_resolution=img_resolution, img_channels=img_channels, segmentation_channels = segmentation_channels, **synthesis_kwargs)
         self.num_ws = self.synthesis.num_ws
         self.mapping = MappingNetwork(z_dim=z_dim, c_dim=c_dim, w_dim=w_dim, num_ws=self.num_ws, **mapping_kwargs)
 

@@ -365,7 +365,7 @@ class SynthesisBlock(torch.nn.Module):
         fp16_channels_last  = False,        # Use channels-last memory format with FP16?
         **layer_kwargs,                     # Arguments for SynthesisLayer.
     ):
-        assert architecture in ['orig', 'skip', 'resnet', 'resnet-segmentation']
+        assert architecture in ['orig', 'skip', 'resnet']
         super().__init__()
         self.in_channels = in_channels
         self.w_dim = w_dim

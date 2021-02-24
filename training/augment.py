@@ -354,6 +354,8 @@ class AugmentPipe(torch.nn.Module):
         # ------------------------------
 
         # Execute if the transform is not identity.
+
+        # Does this transformation really only work for 3 or 1 channel ?
         if C is not I_4:
             images = images.reshape([batch_size, num_channels, height * width])
             if num_channels == 3:
@@ -361,6 +363,8 @@ class AugmentPipe(torch.nn.Module):
             elif num_channels == 1:
                 C = C[:, :3, :].mean(dim=1, keepdims=True)
                 images = images * C[:, :, :3].sum(dim=2, keepdims=True) + C[:, :, 3:]
+            elif num_channels == 6:
+                images[:, :3] =  C[:, :3, :3] @ images[:, :3] + C[:, :3, 3:]
             else:
                 raise ValueError('Image must be RGB (3 channels) or L (1 channel)')
             images = images.reshape([batch_size, num_channels, height, width])

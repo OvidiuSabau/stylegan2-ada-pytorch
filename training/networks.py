@@ -402,9 +402,8 @@ class SynthesisBlock(torch.nn.Module):
             self.num_torgb += 1
 
         if is_last:
-            self.eps = torch.Tensor([1e-8])
-            self.zerotensor = torch.zeros(1)
-
+            self.eps = torch.nn.Parameter(torch.tensor(1e-8), requires_grad=False)
+            self.zerotensor = torch.nn.Parameter(torch.zeros(1), requires_grad=False)
 
         if in_channels != 0 and architecture == 'resnet':
             self.skip = Conv2dLayer(in_channels, out_channels, kernel_size=1, bias=False, up=2,

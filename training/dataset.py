@@ -250,7 +250,7 @@ class ImageWithSegmentationDataset(Dataset):
         else:
             raise IOError('Path must point to a directory')
 
-        self._image_fnames = sorted(fname for fname in self._all_fnames if self._file_ext(fname) == 'npy')
+        self._image_fnames = sorted(fname for fname in self._all_fnames if self._file_ext(fname) == '.npy')
         if len(self._image_fnames) == 0:
             raise IOError('No image files found in the specified path')
 

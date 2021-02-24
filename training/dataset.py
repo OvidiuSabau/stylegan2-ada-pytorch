@@ -273,7 +273,7 @@ class ImageWithSegmentationDataset(Dataset):
 
     def _load_raw_image(self, raw_idx):
         fname = self._image_fnames[raw_idx]
-        image = np.load(fname)
+        image = np.load(self._path + fname)
         image = image.transpose(2, 0, 1) # HWC => CHW
         return image
 

@@ -455,17 +455,9 @@ class SynthesisBlock(torch.nn.Module):
                 originalSegmentation = img[:, 3:]
                 maxs = torch.max(originalSegmentation, dim=1)[0].unsqueeze(1)
                 afterSubtraction = originalSegmentation - maxs + self.eps
-                finalArray = torch.max(self.zerotensor, afterSubtraction) / self.eps
-
-                # Alternative path to obtain 1s in the max position, but unfortunately eq function is not differentiable
-                # Can still be used to verify our computations are correct (and we don't have underflow)
-                eqs = torch.eq(originalSegmentation, maxs)
-
-                assert torch.all(torch.eq(finalArray, eqs)).item()
+                finalArray = torch.round(torch.max(self.zerotensor, afterSubtraction) / self.eps)
 
                 img[:, 3:] = finalArray
-
-
 
         assert x.dtype == dtype
         assert img is None or img.dtype == torch.float32

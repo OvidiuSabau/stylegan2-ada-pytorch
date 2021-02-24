@@ -83,7 +83,9 @@ def save_image_grid(img, fname, drange, grid_size):
     if C == 3:
         PIL.Image.fromarray(img, 'RGB').save(fname)
     if C == 6:
-        PIL.Image.fromarray(img[:, :, :3], 'RGB').save(fname)
+        fname, extension = os.path.splitext(fname)
+        PIL.Image.fromarray(img[:, :, :3], 'RGB').save(fname + '-rgb' + extension)
+        PIL.Image.fromarray(img[:, :, 3:]).save(fname + '-segmentation' + extension)
 
 #----------------------------------------------------------------------------
 

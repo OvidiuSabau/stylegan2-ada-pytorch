@@ -154,13 +154,18 @@ def copy_params_and_buffers(src_module, dst_module, require_all=False):
     assert isinstance(src_module, torch.nn.Module)
     assert isinstance(dst_module, torch.nn.Module)
     src_tensors = {name: tensor for name, tensor in named_params_and_buffers(src_module)}
+    totalParametersDst = len(named_params_and_buffers(dst_module))
+    parametersCopied = 0
     for name, tensor in named_params_and_buffers(dst_module):
         assert (name in src_tensors) or (not require_all)
         if name in src_tensors:
             if src_tensors[name].shape == tensor.shape:
                 tensor.copy_(src_tensors[name].detach()).requires_grad_(tensor.requires_grad)
+                parametersCopied += 1
             else:
                 print('Skipping {} because of shape mismatch - Source {} and Destination {}'.format(name, src_tensors[name].shape, tensor.shape))
+
+    print('** Initialized {} out of {} total parameters **'.format(parametersCopied, totalParametersDst))
 
 #----------------------------------------------------------------------------
 # Context manager for easily enabling/disabling DistributedDataParallel

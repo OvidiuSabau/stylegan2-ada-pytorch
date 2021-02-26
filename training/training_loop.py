@@ -151,9 +151,15 @@ def training_loop(
     if rank == 0:
         print('Constructing networks...')
 
+    G_kwargs.architecture = 'skip'
+    G_kwargs.img_channels = 3
+    G_kwargs.segmentation_channels = 3
+    D_kwargs.architecture = 'skip'
+    D_kwargs.img_channels = 6
+
     common_kwargs = dict(c_dim=training_set.label_dim, img_resolution=training_set.resolution)
-    G = dnnlib.util.construct_class_by_name(**G_kwargs, img_channels=3, segmentation_channels=3, **common_kwargs).train().requires_grad_(False).to(device) # subclass of torch.nn.Module
-    D = dnnlib.util.construct_class_by_name(**D_kwargs, img_channels=6, **common_kwargs).train().requires_grad_(False).to(device) # subclass of torch.nn.Module
+    G = dnnlib.util.construct_class_by_name(**G_kwargs, **common_kwargs).train().requires_grad_(False).to(device) # subclass of torch.nn.Module
+    D = dnnlib.util.construct_class_by_name(**D_kwargs, **common_kwargs).train().requires_grad_(False).to(device) # subclass of torch.nn.Module
     G_ema = copy.deepcopy(G).eval()
 
     # Resume from existing pickle.

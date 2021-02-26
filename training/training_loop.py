@@ -151,10 +151,10 @@ def training_loop(
     if rank == 0:
         print('Constructing networks...')
 
-    G_kwargs.architecture = 'skip'
+    G_kwargs.synthesis_kwargs = dnnlib.EasyDict(architecture = 'res')
     G_kwargs.img_channels = 3
     G_kwargs.segmentation_channels = 3
-    D_kwargs.architecture = 'skip'
+    D_kwargs.synthesis_kwargs = dnnlib.EasyDict(architecture = 'res')
     D_kwargs.img_channels = 6
 
     common_kwargs = dict(c_dim=training_set.label_dim, img_resolution=training_set.resolution)

@@ -151,7 +151,7 @@ def training_loop(
     if rank == 0:
         print('Constructing networks...')
 
-    G_kwargs.synthesis_kwargs.architecture = 'resnet'
+    G_kwargs.synthesis_kwargs.architecture = 'skip'
     G_kwargs.img_channels = 3
     G_kwargs.segmentation_channels = 3
     D_kwargs.architecture = 'resnet'

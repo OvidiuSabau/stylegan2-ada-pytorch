@@ -457,7 +457,7 @@ class SynthesisBlock(torch.nn.Module):
                 originalSegmentation = img[:, 3:]
                 maxs = torch.max(originalSegmentation, dim=1)[0].unsqueeze(1)
                 afterSubtraction = originalSegmentation - maxs + self.eps
-                finalArray = torch.round(torch.max(self.zerotensor, afterSubtraction) / self.eps)
+                finalArray = torch.round(torch.max(self.zeroTensor, afterSubtraction) / self.eps)
 
                 img[:, 3:] = finalArray
 

@@ -158,7 +158,7 @@ def training_loop(
     G_kwargs.img_channels = 3
     G_kwargs.segmentation_channels = 3
 
-    D_opt_kwargs.lr =5 * 1e-5
+    D_opt_kwargs.lr = 5 * 1e-5
     D_kwargs.architecture = 'resnet'
     D_kwargs.img_channels = 6
 

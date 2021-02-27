@@ -171,10 +171,13 @@ def training_loop(
             misc.copy_params_and_buffers(resume_data[name], module, require_all=False)
 
     # Freeze all but tosegmentation layers in Generator
-    for network in [G, G_ema]:
-        for name, parameter in network.named_parameters():
-            if 'tosegmentation' not in name:
-                parameter.requires_grad = False
+    for name, parameter in G.named_parameters():
+        if 'tosegmentation' not in name:
+            parameter.requires_grad = False
+
+    for name, parameter in G.named_parameters():
+        if parameter.requires_grad:
+            print(name)
 
     # Print network summary tables.
     if rank == 0:

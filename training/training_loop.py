@@ -68,8 +68,10 @@ def setup_snapshot_image_grid(training_set, random_seed=0):
 def save_image_grid(img, fname, drange, grid_size):
     lo, hi = drange
     img = np.asarray(img, dtype=np.float32)
-    img = (img - lo) * (255 / (hi - lo))
-    img = np.rint(img).clip(0, 255).astype(np.uint8)
+    img[:, :3] = (img[:, :3] - lo) * (255 / (hi - lo))
+    img[:, :3] = np.rint(img[:, :3]).clip(0, 255).astype(np.uint8)
+
+    print(img.shape)
 
     gw, gh = grid_size
     _N, C, H, W = img.shape
@@ -170,14 +172,13 @@ def training_loop(
         for name, module in [('G', G), ('D', D), ('G_ema', G_ema)]:
             misc.copy_params_and_buffers(resume_data[name], module, require_all=False)
 
-    # Freeze all but tosegmentation layers in Generator
-    for name, parameter in G.named_parameters():
-        if 'tosegmentation' not in name:
-            parameter.requires_grad = False
+    # # Freeze all but tosegmentation layers in Generator
+    # for name, parameter in G.named_parameters():
+    #     if 'tosegmentation' not in name:
+    #         parameter.requires_grad = False
 
     for name, parameter in G.named_parameters():
-        if parameter.requires_grad:
-            print(name)
+        print(name, parameter.requires_grad)
 
     # Print network summary tables.
     if rank == 0:

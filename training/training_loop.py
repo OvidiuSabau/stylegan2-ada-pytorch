@@ -172,14 +172,6 @@ def training_loop(
         for name, module in [('G', G), ('D', D), ('G_ema', G_ema)]:
             misc.copy_params_and_buffers(resume_data[name], module, require_all=False)
 
-    # # Freeze all but tosegmentation layers in Generator
-    # for name, parameter in G.named_parameters():
-    #     if 'tosegmentation' not in name:
-    #         parameter.requires_grad = False
-
-    for name, parameter in G.named_parameters():
-        print(name, parameter.requires_grad)
-
     # Print network summary tables.
     if rank == 0:
         z = torch.empty([batch_gpu, G.z_dim], device=device)

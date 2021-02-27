@@ -160,12 +160,15 @@ def copy_params_and_buffers(src_module, dst_module, require_all=False):
         assert (name in src_tensors) or (not require_all)
         if name in src_tensors:
             if src_tensors[name].shape == tensor.shape:
-                tensor.copy_(src_tensors[name].detach()).requires_grad_(tensor.requires_grad)
+                tensor.copy_(src_tensors[name].detach()).requires_grad_('tosegmentation' in name)
                 parametersCopied += 1
             else:
                 print('Skipping {} because of shape mismatch - Source {} and Destination {}'.format(name, src_tensors[name].shape, tensor.shape))
         else:
             print('Skipping {} because it is not in source module'.format(name))
+
+    for name, tensor in named_params_and_buffers(dst_module):
+        print(name, tensor.requires_grad)
 
     print('** Initialized {} out of {} total parameters **'.format(parametersCopied, totalParametersDst))
 

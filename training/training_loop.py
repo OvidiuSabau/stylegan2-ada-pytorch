@@ -87,7 +87,7 @@ def save_image_grid(img, fname, drange, grid_size):
     if C == 6:
         fname, extension = os.path.splitext(fname)
         PIL.Image.fromarray(img[:, :, :3], 'RGB').save(fname + '-rgb' + extension)
-        PIL.Image.fromarray(img[:, :, 3:] * 255).save(fname + '-segmentation' + extension)
+        PIL.Image.fromarray(img[:, :, 3:] * 255, 'RGB').save(fname + '-segmentation' + extension)
 
 #----------------------------------------------------------------------------
 
@@ -153,9 +153,12 @@ def training_loop(
     if rank == 0:
         print('Constructing networks...')
 
+    G_opt_kwargs.lr = 5 * 1e-5
     G_kwargs.synthesis_kwargs.architecture = 'skip'
     G_kwargs.img_channels = 3
     G_kwargs.segmentation_channels = 3
+
+    D_opt_kwargs.lr =5 * 1e-5
     D_kwargs.architecture = 'resnet'
     D_kwargs.img_channels = 6
 

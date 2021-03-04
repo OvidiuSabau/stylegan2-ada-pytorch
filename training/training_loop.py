@@ -151,12 +151,12 @@ def training_loop(
     if rank == 0:
         print('Constructing networks...')
 
-    G_opt_kwargs.lr = 1e-6
+    G_opt_kwargs.lr = 5 * 1e-5
     G_kwargs.synthesis_kwargs.architecture = 'skip'
     G_kwargs.img_channels = 3
     G_kwargs.segmentation_channels = 3
 
-    D_opt_kwargs.lr = 1e-6
+    D_opt_kwargs.lr = 5 * 1e-5
     D_kwargs.architecture = 'resnet'
     D_kwargs.img_channels = 6
 
@@ -220,7 +220,6 @@ def training_loop(
             opt = dnnlib.util.construct_class_by_name(module.parameters(), **opt_kwargs) # subclass of torch.optim.Optimizer
             phases += [dnnlib.EasyDict(name=name+'main', module=module, opt=opt, interval=1)]
             phases += [dnnlib.EasyDict(name=name+'reg', module=module, opt=opt, interval=reg_interval)]
-
     for phase in phases:
         phase.start_event = None
         phase.end_event = None
@@ -235,11 +234,13 @@ def training_loop(
     if rank == 0:
         print('Exporting sample images...')
         grid_size, images, labels = setup_snapshot_image_grid(training_set=training_set)
+        # save_image_grid(images / 127.5 - 1, os.path.join(run_dir, 'reals.png'), drange=[-1, 1], grid_size=grid_size)
         save_image_grid(images, os.path.join(run_dir, 'reals.png'), drange=[0, 255], grid_size=grid_size)
         grid_z = torch.randn([labels.shape[0], G.z_dim], device=device).split(batch_gpu)
         grid_c = torch.from_numpy(labels).to(device).split(batch_gpu)
         images = torch.cat([G_ema(z=z, c=c, noise_mode='const').cpu() for z, c in zip(grid_z, grid_c)]).numpy()
-        save_image_grid(images, os.path.join(run_dir, 'fakes_init.png'), drange=[-1, 1], grid_size=grid_size)
+        save_image_grid((images + 1) / 127.5, os.path.join(run_dir, 'fakes_init.png'), drange=[0, 255], grid_size=grid_size)
+        # save_image_grid(images, os.path.join(run_dir, 'fakes_init.png'), drange=[-1, 1], grid_size=grid_size)
 
     # Initialize logs.
     if rank == 0:
@@ -273,9 +274,7 @@ def training_loop(
         # Fetch training data.
         with torch.autograd.profiler.record_function('data_fetch'):
             phase_real_img, phase_real_c = next(training_set_iterator)
-            phase_real_img = phase_real_img.to(device).to(torch.float32)
-            phase_real_img[:, :3] = phase_real_img / 127.5 - 1
-            phase_real_img = phase_real_img.split(batch_gpu)
+            phase_real_img = (phase_real_img.to(device).to(torch.float32) / 127.5 - 1).split(batch_gpu)
             phase_real_c = phase_real_c.to(device).split(batch_gpu)
             all_gen_z = torch.randn([len(phases) * batch_size, G.z_dim], device=device)
             all_gen_z = [phase_gen_z.split(batch_gpu) for phase_gen_z in all_gen_z.split(batch_size)]

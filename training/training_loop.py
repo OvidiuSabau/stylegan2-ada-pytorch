@@ -68,10 +68,8 @@ def setup_snapshot_image_grid(training_set, random_seed=0):
 def save_image_grid(img, fname, drange, grid_size):
     lo, hi = drange
     img = np.asarray(img, dtype=np.float32)
-    img = (img - lo) * (255 / (hi - lo))
-    img = np.rint(img).clip(0, 255).astype(np.uint8)
-
-    print(img.shape)
+    img[:, :3] = (img[:, :3] - lo) * (255 / (hi - lo))
+    img[:, :3] = np.rint(img[:, :3]).clip(0, 255).astype(np.uint8)
 
     gw, gh = grid_size
     _N, C, H, W = img.shape

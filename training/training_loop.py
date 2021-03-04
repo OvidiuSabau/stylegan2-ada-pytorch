@@ -151,12 +151,12 @@ def training_loop(
     if rank == 0:
         print('Constructing networks...')
 
-    G_opt_kwargs.lr = 5 * 1e-5
+    G_opt_kwargs.lr = 1e-6
     G_kwargs.synthesis_kwargs.architecture = 'skip'
     G_kwargs.img_channels = 3
     G_kwargs.segmentation_channels = 3
 
-    D_opt_kwargs.lr = 5 * 1e-5
+    D_opt_kwargs.lr = 1e-6
     D_kwargs.architecture = 'resnet'
     D_kwargs.img_channels = 6
 
@@ -274,7 +274,9 @@ def training_loop(
         # Fetch training data.
         with torch.autograd.profiler.record_function('data_fetch'):
             phase_real_img, phase_real_c = next(training_set_iterator)
-            phase_real_img = (phase_real_img.to(device).to(torch.float32) / 127.5 - 1).split(batch_gpu)
+            phase_real_img = phase_real_img.to(device).to(torch.float32)
+            phase_real_img[:, :3] = phase_real_img[:, :3] / 127.5 - 1
+            phase_real_img = phase_real_img.split(batch_gpu)
             phase_real_c = phase_real_c.to(device).split(batch_gpu)
             all_gen_z = torch.randn([len(phases) * batch_size, G.z_dim], device=device)
             all_gen_z = [phase_gen_z.split(batch_gpu) for phase_gen_z in all_gen_z.split(batch_size)]

@@ -397,7 +397,7 @@ class SynthesisBlock(torch.nn.Module):
                 conv_clamp=conv_clamp, channels_last=self.channels_last)
             self.tosegmentation = ToSegmentationLayer(out_channels, segmentation_channels, w_dim=w_dim,
                                                       conv_clamp=conv_clamp, channels_last=self.channels_last)
-            self.num_torgb += 1
+            self.num_torgb += 2
 
         if is_last:
             eps = torch.tensor(1e-8)
@@ -444,11 +444,11 @@ class SynthesisBlock(torch.nn.Module):
             img = upfirdn2d.upsample2d(img, self.resample_filter)
 
         if self.is_last or self.architecture == 'skip':
+            # w_temp = next(w_iter)
 
-            w_temp = next(w_iter)
-            rgb = self.torgb(x, w_temp, fused_modconv=fused_modconv)
+            rgb = self.torgb(x, next(w_iter), fused_modconv=fused_modconv)
             rgb = rgb.to(dtype=torch.float32, memory_format=torch.contiguous_format)
-            segmentation = self.tosegmentation(x, w_temp, fused_modconv=fused_modconv)
+            segmentation = self.tosegmentation(x, next(w_iter), fused_modconv=fused_modconv)
             newImg = torch.cat((rgb, segmentation), dim=1)
             img = img.add_(newImg) if img is not None else newImg
 
@@ -499,9 +499,9 @@ class SynthesisNetwork(torch.nn.Module):
                                    segmentation_channels=segmentation_channels, is_last=is_last, use_fp16=use_fp16,
                                    **block_kwargs)
 
-            self.num_ws += block.num_conv
-            if is_last:
-                self.num_ws += block.num_torgb
+            self.num_ws += block.num_conv + block.num_torgb
+            # if is_last:
+            #     self.num_ws += block.num_torgb
             setattr(self, f'b{res}', block)
 
     def forward(self, ws, **block_kwargs):

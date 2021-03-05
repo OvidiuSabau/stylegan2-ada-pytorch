@@ -61,7 +61,7 @@ def project(
     # with dnnlib.util.open_url(url) as f:
     #     vgg16 = torch.jit.load(f).eval().to(device)
 
-    vgg16 = torch.load('vgg16.pt')
+    vgg16 = torch.jit.load('vgg16.pt').eval().to(device)
 
     # Features for target image.
     target_images = target.unsqueeze(0).to(device).to(torch.float32)

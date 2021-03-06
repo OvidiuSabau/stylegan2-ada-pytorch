@@ -14,7 +14,7 @@ if not os.path.exists(path):
     os.makedirs(path)
 
 # process all masks, these are split into 15 folders
-for i in range(1):
+for i in range(15):
     print("Processing masks folder {}..".format(i))
     mask_images = {}  # to store current folder's masks, all masks for one image are in one folder
     files = glob.glob('CelebAMask-HQ/CelebAMask-HQ-mask-anno/{}/*.png'.format(i))

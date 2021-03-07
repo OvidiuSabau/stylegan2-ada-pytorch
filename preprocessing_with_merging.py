@@ -6,7 +6,7 @@ import gc
 
 
 mask_names = ['skin', 'nose', 'eye_g', 'l_eye', 'r_eye', 'l_brow', 'r_brow', 'l_ear', 'r_ear', 'mouth', 'u_lip', 'l_lip', 'hair', 'hat', 'ear_r', 'neck_l', 'neck', 'cloth']
-img_shape = (1024, 1024)
+img_shape = (256, 256) # or(1024, 1024) or (512, 512)
 
 print("Creating output folder FullyProcessedCelebA..")
 path = os.getcwd() + '/FullyProcessedCelebA'

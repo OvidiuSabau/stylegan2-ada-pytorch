@@ -162,8 +162,7 @@ if __name__ == "__main__":
     lr_lambda = lambda epoch: 0.7
     lr_scheduler = optim.lr_scheduler.MultiplicativeLR(optimizer, lr_lambda)
 
-    print('Num training batches', num_train_batches)
-    print('Num testing batches', num_test_batches)
+    print('Architecture Resnet with {} channels'.format(channels))
 
     testLosses = []
     testAcc = []

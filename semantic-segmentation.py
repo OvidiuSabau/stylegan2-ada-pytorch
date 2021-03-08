@@ -3,6 +3,7 @@ import time
 import torch
 import torch.optim as optim
 import torch.nn as nn
+import dnnlib
 
 
 class DenseNet(nn.Module):
@@ -132,6 +133,9 @@ def print_stats(batch, trainLoss, acc, parameters, time):
 
 
 def main():
+
+    dnnlib.util.Logger(should_flush=True)
+
     if torch.cuda.is_available():
         device = torch.device("cuda:0")  # you can continue going on here, like cuda:1 cuda:2....etc.
         print("Running on the GPU")
@@ -264,8 +268,6 @@ def main():
 if __name__ == "__main__":
 
     main()
-
-
 
 
 

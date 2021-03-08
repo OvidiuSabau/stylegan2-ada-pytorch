@@ -22,12 +22,16 @@ import torch.nn.functional as F
 import dnnlib
 import legacy
 
+from projector import project
+
 def interpolation(
     G,
     identity: torch.Tensor, # [C,H,W] and dynamic range [0,255], W & H must match G output resolution
     hair: torch.Tensor, # [C,H,W] and dynamic range [0,255], W & H must match G output resolution 
     *,
-    num_steps                  = 1000,
+    alpha1                     = 1.0,
+    alpha2                     = 1.0,
+    num_steps                  = 2000,
     q_avg_samples              = 10000,
     initial_learning_rate      = 0.1,
     initial_noise_factor       = 0.05,
@@ -40,17 +44,25 @@ def interpolation(
 ):
 '''
     input hair_img, person_img
-    img -> projection -> zs -> mapping network -> ws 
+
+    hair_img -> masked_hair_img
+    person_img -> masked_person_img
+    masked_person_img -> vgg -> person_features
+    masked_hair_img -> vgg -> hair_features
+
+    masked_imgs -> projection -> z_h, z_p -> mapping network -> w_h, w_p 
     disable grads for G
     define random Q requires_grad
     optimizer loop:
-        loss = matmul for hair and person
-        sum
-        define alphas
+        w_t <- w_h + w_p
+        G.synthesis(w_t) -> synth_image
+        synth_img -> segmentation -> masked_hair_synth_img
+        masked_hair_synth_img -> vgg -> masked_hair_synth_feat
+        loss:
+            (masked_hair_synth_feat - hair_features).square.sum for each
+            define alphas
 
 '''
-
-
 
     assert identity.shape == (G.img_channels, G.img_resolution, G.img_resolution)
 
@@ -63,7 +75,7 @@ def interpolation(
     # Compute q stats.
     logprint(f'Computing W midpoint and stddev using {q_avg_samples} samples...')
     q_samples = np.random.RandomState(123).randn(q_avg_samples, G.w_dim)  
-    q_avg = np.mean(q_samples, axis=0, keepdims=True)     # [1, G.w_dim]
+    q_avg = np.mean(q_samples, axis=0, keepdims=True)     # [G.w_dim]
     q_std = (np.sum((q_samples - q_avg) ** 2) / w_avg_samples) ** 0.5
 
     # Setup noise inputs.
@@ -76,20 +88,31 @@ def interpolation(
 
     vgg16 = torch.jit.load('vgg16.pt').eval().to(device)
 
+    # TODO: img -> masked_img
+    masked_identity_img = identity
+    masked_hair_img = hair
+
     # Features for identity image.
-    identity_images = identity.unsqueeze(0).to(device).to(torch.float32)
-    if identity_images.shape[2] > 256:
-        identity_images = F.interpolate(identity_images, size=(256, 256), mode='area')
-    identity_features = vgg16(identity_images, resize_images=False, return_lpips=True)
+    masked_identity_img = identity.unsqueeze(0).to(device).to(torch.float32)
+    if masked_identity_img.shape[2] > 256:
+        masked_identity_img = F.interpolate(masked_identity_img, size=(256, 256), mode='area')
+    identity_features = vgg16(masked_identity_img, resize_images=False, return_lpips=True)
 
     # Features for hair image.
-    hair_images = hair.unsqueeze(0).to(device).to(torch.float32)
-    if hair_images.shape[2] > 256:
-        hair_images = F.interpolate(hair_images, size=(256, 256), mode='area')
-    hair_features = vgg16(hair_images, resize_images=False, return_lpips=True)
+    masked_hair_img = hair.unsqueeze(0).to(device).to(torch.float32)
+    if masked_hair_img.shape[2] > 256:
+        masked_hair_img = F.interpolate(masked_hair_img, size=(256, 256), mode='area')
+    hair_features = vgg16(masked_hair_img, resize_images=False, return_lpips=True)
+
+    # Projection of images to w
+    z_h = project(G, masked_hair_img)
+    z_p = project(G, masked_identity_img)
+    w_h = G.mapping(z_h.to(device), None)
+    w_p = G.mapping(z_p.to(device), None)
 
     q_opt = torch.tensor(q_avg, dtype=torch.float32, device=device, requires_grad=True) # pylint: disable=not-callable
-    q_out = torch.zeros([num_steps] + list(q_opt.shape[1:]), dtype=torch.float32, device=device)
+    # list of all target ws through optimization
+    w_out = torch.zeros([num_steps] + list(q_opt.shape[1:]), dtype=torch.float32, device=device)
     optimizer = torch.optim.Adam([q_opt] + list(noise_bufs.values()), betas=(0.9, 0.999), lr=initial_learning_rate)
 
     # Init noise.
@@ -109,18 +132,30 @@ def interpolation(
             param_group['lr'] = lr
 
         # Synth images from opt_w.
-        w_noise = torch.randn_like(w_opt) * w_noise_scale
-        ws = (w_opt + w_noise).repeat([1, G.mapping.num_ws, 1])
-        synth_images = G.synthesis(ws, noise_mode='const')
+        q_noise = torch.randn_like(q_opt) * q_noise_scale
+        qs = (q_opt + q_noise)
+        Q = torch.diag(qs)
+        
+        w_t = w_p + torch.matmul(Q, w_h - w_p) 
 
         # Downsample image to 256x256 if it's larger than that. VGG was built for 224x224 images.
-        synth_images = (synth_images + 1) * (255/2)
-        if synth_images.shape[2] > 256:
-            synth_images = F.interpolate(synth_images, size=(256, 256), mode='area')
+        target_image = G.synthesis(w_t, noise_mode='const')
+        target_image = (target_image + 1) * (255/2)
+        if target_image.shape[2] > 256:
+            target_image = F.interpolate(target_image, size=(256, 256), mode='area')
+
+        # TODO: img -> masked_img
+        hair_target_image = target_image
+        identity_target_image = target_image
 
         # Features for synth images.
-        synth_features = vgg16(synth_images, resize_images=False, return_lpips=True)
-        dist = (identity_features - synth_features).square().sum()
+        target_hair_features = vgg16(hair_target_image, resize_images=False, return_lpips=True)
+        target_identity_features = vgg16(identity_target_image, resize_images=False, return_lpips=True)
+
+        # Compute loss
+        hair_dist = (target_hair_features - hair_features).square().sum()
+        identity_dist = (target_identity_features - identity_features).square().sum()
+        dist = alpha1 * hair_dist + alpha2 * identity_dist
 
         # Noise regularization.
         reg_loss = 0.0
@@ -141,7 +176,7 @@ def interpolation(
         logprint(f'step {step+1:>4d}/{num_steps}: dist {dist:<4.2f} loss {float(loss):<5.2f}')
 
         # Save projected W for each optimization step.
-        w_out[step] = w_opt.detach()[0]
+        w_out[step] = w_t
 
         # Normalize noise.
         with torch.no_grad():
@@ -149,7 +184,7 @@ def interpolation(
                 buf -= buf.mean()
                 buf *= buf.square().mean().rsqrt()
 
-    return w_out.repeat([1, G.mapping.num_ws, 1])
+    return w_out
 
 #----------------------------------------------------------------------------
 

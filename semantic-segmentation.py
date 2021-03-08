@@ -153,23 +153,21 @@ def main():
     num_train_batches = int(np.ceil(trainingData.shape[0] / train_batch_size))
     num_test_batches = int(np.ceil(testingData.shape[0] / test_batch_size))
 
-    expansion_rate = 12
-    num_layers = 18
+    channels = [8, 32, 64, 128, 256, 128, 64, 64, 32]
     in_channels = 3
-    bottleneck_rate = 2
     segmentation_channels = 3
     kernel_size = 5
-    numBatchesPerStep = 16
+    numBatchesPerStep = 8
     lr = 5 * 1e-4
-    model = DenseNet(in_channels=in_channels, expansion_rate=expansion_rate, num_layers=num_layers,
-                     kernel_size=kernel_size, bottleneck_rate=bottleneck_rate, segmentation_channels=segmentation_channels)
+    model = ResNet(in_channels=in_channels, channels=channels, kernel_size=kernel_size,
+                   segmentation_channels=segmentation_channels)
     model = model.to(device)
 
     optimizer = optim.Adam(model.parameters(), lr=lr)
     lr_lambda = lambda epoch: 0.9
     lr_scheduler = optim.lr_scheduler.MultiplicativeLR(optimizer, lr_lambda)
 
-    print('Architecture DenseNet with exp {} and {} layers'.format(expansion_rate, num_layers))
+    print('Architecture ResNet with channels {}'.format(channels))
 
     testLosses = []
     testAcc = []
@@ -236,7 +234,7 @@ def main():
 
             t_final = time.time() - t0
 
-            if batch % 60 == 0:
+            if batch % 80 == 0:
                 print_stats(batch, loss.item(), acc, model.parameters(), t_final)
 
         x = None

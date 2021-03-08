@@ -12,12 +12,14 @@ class DenseNet(nn.Module):
             expansion_rate,
             num_layers,
             kernel_size,
+            bottleneck_rate,
             segmentation_channels
     ):
         super(DenseNet, self).__init__()
         self.in_channels = in_channels
         self.expansion_rate = expansion_rate
         self.num_layers = num_layers
+        self.bottleneck_rate = bottleneck_rate
         self.kernel_size = kernel_size
         self.segmentation_channels = segmentation_channels
 
@@ -32,11 +34,11 @@ class DenseNet(nn.Module):
             if current_channels > 4 * expansion_rate:
 
                 self.layers['bottleneck' + str(layer)] = nn.Conv2d(in_channels=current_channels,
-                                                                   out_channels=4 * expansion_rate, kernel_size=1,
-                                                                   padding=0)
+                                                                   out_channels=bottleneck_rate * expansion_rate,
+                                                                   kernel_size=1, padding=0)
 
                 self.layers['conv' + str(layer)] = nn.Conv2d(
-                    in_channels=4 * expansion_rate, out_channels=expansion_rate,
+                    in_channels=bottleneck_rate * expansion_rate, out_channels=expansion_rate,
                     kernel_size=kernel_size, padding=(kernel_size - 1) // 2)
 
             else:
@@ -143,24 +145,25 @@ if __name__ == "__main__":
     testingData = np.load('preprocessed-datasets/celebmask-test.npy')
 
     criterion = nn.CrossEntropyLoss()
-    train_batch_size = 16
-    test_batch_size = 32
+    train_batch_size = 8
+    test_batch_size = 16
     num_train_batches = int(np.ceil(trainingData.shape[0] / train_batch_size))
     num_test_batches = int(np.ceil(testingData.shape[0] / test_batch_size))
 
-    expansion_rate = 12
-    num_layers = 15
+    expansion_rate = 8
+    num_layers = 18
     in_channels = 3
+    bottleneck_rate = 2
     segmentation_channels = 3
     kernel_size = 5
-    numBatchesPerStep = 4
+    numBatchesPerStep = 8
     lr = 1e-4
     model = DenseNet(in_channels=in_channels, expansion_rate=expansion_rate, num_layers=num_layers,
-                     kernel_size=kernel_size, segmentation_channels=segmentation_channels)
+                     kernel_size=kernel_size, bottleneck_rate=bottleneck_rate, segmentation_channels=segmentation_channels)
     model = model.to(device)
 
     optimizer = optim.Adam(model.parameters(), lr=lr)
-    lr_lambda = lambda epoch: 0.7
+    lr_lambda = lambda epoch: 0.9
     lr_scheduler = optim.lr_scheduler.MultiplicativeLR(optimizer, lr_lambda)
 
     print('Architecture DenseNet with exp {} and {} layers'.format(expansion_rate, num_layers))

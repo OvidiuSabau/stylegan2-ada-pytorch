@@ -148,28 +148,29 @@ if __name__ == "__main__":
     num_train_batches = int(np.ceil(trainingData.shape[0] / train_batch_size))
     num_test_batches = int(np.ceil(testingData.shape[0] / test_batch_size))
 
-    channels = [8, 16, 32, 64, 128, 64, 32, 16, 8]
+    expansion_rate = 12
+    num_layers = 15
     in_channels = 3
     segmentation_channels = 3
     kernel_size = 5
     numBatchesPerStep = 4
     lr = 1e-4
-    model = ResNet(in_channels=in_channels, channels=channels, kernel_size=kernel_size,
-                   segmentation_channels=segmentation_channels)
+    model = DenseNet(in_channels=in_channels, expansion_rate=expansion_rate, num_layers=num_layers,
+                     kernel_size=kernel_size, segmentation_channels=segmentation_channels)
     model = model.to(device)
 
     optimizer = optim.Adam(model.parameters(), lr=lr)
     lr_lambda = lambda epoch: 0.7
     lr_scheduler = optim.lr_scheduler.MultiplicativeLR(optimizer, lr_lambda)
 
-    print('Architecture Resnet with {} channels'.format(channels))
+    print('Architecture DenseNet with exp {} and {} layers'.format(expansion_rate, num_layers))
 
     testLosses = []
     testAcc = []
     trainLosses = []
     trainAcc = []
 
-    for epoch in range(5):
+    for epoch in range(25):
 
         print('Starting Epoch {}'.format(epoch))
         epoch_t0 = time.time()
@@ -245,6 +246,16 @@ if __name__ == "__main__":
             'Epoch {} finished in {:.1f} w/ lr {}'.format(epoch, time.time() - epoch_t0, lr_scheduler.get_last_lr()[0]))
 
     torch.save(model, 'semantic-segmentation.pt')
+
+    testLosses = np.stack(testLosses)
+    trainLosses = np.stack(trainLosses)
+    testAcc = np.stack(testAcc)
+    trainAcc = np.stack(trainAcc)
+
+    np.save('testLosses', testLosses)
+    np.save('trainLosses', trainLosses)
+    np.save('testAcc', testAcc)
+    np.save('trainAcc', trainAcc)
 
 
 

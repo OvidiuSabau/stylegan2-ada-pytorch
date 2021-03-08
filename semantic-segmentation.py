@@ -153,14 +153,14 @@ def main():
     num_train_batches = int(np.ceil(trainingData.shape[0] / train_batch_size))
     num_test_batches = int(np.ceil(testingData.shape[0] / test_batch_size))
 
-    expansion_rate = 8
+    expansion_rate = 12
     num_layers = 18
     in_channels = 3
     bottleneck_rate = 2
     segmentation_channels = 3
     kernel_size = 5
-    numBatchesPerStep = 8
-    lr = 1e-4
+    numBatchesPerStep = 16
+    lr = 5 * 1e-4
     model = DenseNet(in_channels=in_channels, expansion_rate=expansion_rate, num_layers=num_layers,
                      kernel_size=kernel_size, bottleneck_rate=bottleneck_rate, segmentation_channels=segmentation_channels)
     model = model.to(device)
@@ -176,7 +176,7 @@ def main():
     trainLosses = []
     trainAcc = []
 
-    for epoch in range(25):
+    for epoch in range(10):
 
         print('Starting Epoch {}'.format(epoch))
         epoch_t0 = time.time()

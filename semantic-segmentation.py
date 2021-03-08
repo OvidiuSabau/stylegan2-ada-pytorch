@@ -131,8 +131,7 @@ def print_stats(batch, trainLoss, acc, parameters, time):
         batch, time, trainLoss, acc, np.log10(s)))
 
 
-if __name__ == "__main__":
-
+def main():
     if torch.cuda.is_available():
         device = torch.device("cuda:0")  # you can continue going on here, like cuda:1 cuda:2....etc.
         print("Running on the GPU")
@@ -259,6 +258,13 @@ if __name__ == "__main__":
     np.save('trainLosses', trainLosses)
     np.save('testAcc', testAcc)
     np.save('trainAcc', trainAcc)
+
+
+
+if __name__ == "__main__":
+
+    main()
+
 
 
 

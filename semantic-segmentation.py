@@ -4,7 +4,7 @@ import torch
 import torch.optim as optim
 import torch.nn as nn
 import dnnlib
-
+import os
 
 class DenseNet(nn.Module):
     def __init__(
@@ -153,19 +153,40 @@ def main():
     num_train_batches = int(np.ceil(trainingData.shape[0] / train_batch_size))
     num_test_batches = int(np.ceil(testingData.shape[0] / test_batch_size))
 
+    architecture = 'res'
+
+    path = os.getcwd() + '/networks/' + architecture + '/'
+    if not os.path.exists(path):
+        os.makedirs(path)
+
+    i = 0
+    while os.path.exists(path + str(i)):
+        i += 1
+
+    os.makedirs(path + str(i))
+
+    write_prefix = path + str(i) + '/'
+
     channels = [8, 32, 64, 128, 256, 128, 64, 64, 32]
     in_channels = 3
     segmentation_channels = 3
     kernel_size = 5
-    numBatchesPerStep = 16
+    numBatchesPerStep = 32
     lr = 5 * 1e-4
     model = ResNet(in_channels=in_channels, channels=channels, kernel_size=kernel_size,
                    segmentation_channels=segmentation_channels)
     model = model.to(device)
 
     optimizer = optim.Adam(model.parameters(), lr=lr)
-    lr_lambda = lambda epoch: 0.9
-    lr_scheduler = optim.lr_scheduler.MultiplicativeLR(optimizer, lr_lambda)
+    lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer=optimizer, factor=0.5, patience=1, threshold=1e-3, eps=1e-6)
+
+    with open(write_prefix + 'train-config.txt', 'w') as file:
+        file.write('channels ' + str(channels) + '\n')
+        file.write('kernel_size ' + str(kernel_size) + '\n')
+        file.write('batch_size ' + str(train_batch_size) + '\n')
+        file.write('numBatchesPerStep ' + str(numBatchesPerStep) + '\n')
+        file.write('lr' + str(lr) + '\n')
+
 
     print('Architecture ResNet with channels {}'.format(channels))
 
@@ -208,6 +229,8 @@ def main():
         permutation = np.random.permutation(trainingData.shape[0])
         trainingData = trainingData[permutation]
 
+        lr_scheduler.step(testLosses[-1])
+
         model.train()
         for batch in range(num_train_batches):
 
@@ -226,7 +249,7 @@ def main():
 
             trainLosses.append(loss.item())
             trainAcc.append(acc)
-            loss.backward()
+            (loss / numBatchesPerStep).backward()
 
             if batch % numBatchesPerStep == (numBatchesPerStep - 1):
                 optimizer.step()
@@ -245,22 +268,13 @@ def main():
         loss = None
         torch.cuda.empty_cache()
 
-        lr_scheduler.step()
-        print(
-            'Epoch {} finished in {:.1f} w/ lr {}'.format(epoch, time.time() - epoch_t0, lr_scheduler.get_last_lr()[0]))
+        torch.save(model, write_prefix + str(epoch) + '.pt')
+        np.save(write_prefix + str(epoch) + '-testLosses', np.stack(testLosses))
+        np.save(write_prefix + str(epoch) + '-trainLosses', np.stack(trainLosses))
+        np.save(write_prefix + str(epoch) + '-testAcc', np.stack(testAcc))
+        np.save(write_prefix + str(epoch) + '-trainAcc', np.stack(trainAcc))
 
-    torch.save(model, 'semantic-segmentation.pt')
-
-    testLosses = np.stack(testLosses)
-    trainLosses = np.stack(trainLosses)
-    testAcc = np.stack(testAcc)
-    trainAcc = np.stack(trainAcc)
-
-    np.save('testLosses', testLosses)
-    np.save('trainLosses', trainLosses)
-    np.save('testAcc', testAcc)
-    np.save('trainAcc', trainAcc)
-
+        print('Epoch {} finished in {:.1f}'.format(epoch, time.time() - epoch_t0))
 
 
 if __name__ == "__main__":

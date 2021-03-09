@@ -105,10 +105,8 @@ def interpolation(
     hair_features = vgg16(masked_hair_img, resize_images=False, return_lpips=True)
 
     # Projection of images to w
-    z_h = project(G, masked_hair_img)
-    z_p = project(G, masked_identity_img)
-    w_h = G.mapping(z_h.to(device), None)
-    w_p = G.mapping(z_p.to(device), None)
+    w_h = project(G, hair)
+    w_p = project(G, identity)
 
     q_opt = torch.tensor(q_avg, dtype=torch.float32, device=device, requires_grad=True) # pylint: disable=not-callable
     # list of all target ws through optimization

@@ -167,27 +167,27 @@ def main():
 
     write_prefix = path + str(i) + '/'
 
-    channels = [8, 32, 64, 128, 256, 128, 64, 64, 32]
+    # channels = [8, 32, 64, 128, 256, 128, 64, 64, 32]
     expansion_rate = 12
     bottleneck_rate = 4
-    num_layers = 16
+    num_layers = 14
     in_channels = 3
     segmentation_channels = 3
     kernel_size = 5
     numBatchesPerStep = 32
     lr = 5 * 1e-4
-    model = ResNet(in_channels=in_channels, channels=channels, kernel_size=kernel_size, segmentation_channels=segmentation_channels)
-    # model = DenseNet(in_channels=in_channels, expansion_rate=expansion_rate, bottleneck_rate=bottleneck_rate, num_layers=num_layers, kernel_size=kernel_size, segmentation_channels=segmentation_channels)
+    # model = ResNet(in_channels=in_channels, channels=channels, kernel_size=kernel_size, segmentation_channels=segmentation_channels)
+    model = DenseNet(in_channels=in_channels, expansion_rate=expansion_rate, bottleneck_rate=bottleneck_rate, num_layers=num_layers, kernel_size=kernel_size, segmentation_channels=segmentation_channels)
     model = model.to(device)
 
     optimizer = optim.Adam(model.parameters(), lr=lr)
     lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer=optimizer, factor=0.5, patience=1, threshold=1e-3, eps=1e-6, verbose=True)
 
     with open(write_prefix + 'train-config.txt', 'w') as file:
-        file.write('channels ' + str(channels) + '\n')
-        # file.write('expansion_rate ' + str(expansion_rate) + '\n')
-        # file.write('bottleneck_rate ' + str(bottleneck_rate) + '\n')
-        # file.write('num_layers ' + str(num_layers) + '\n')
+        # file.write('channels ' + str(channels) + '\n')
+        file.write('expansion_rate ' + str(expansion_rate) + '\n')
+        file.write('bottleneck_rate ' + str(bottleneck_rate) + '\n')
+        file.write('num_layers ' + str(num_layers) + '\n')
         file.write('kernel_size ' + str(kernel_size) + '\n')
         file.write('batch_size ' + str(train_batch_size) + '\n')
         file.write('numBatchesPerStep ' + str(numBatchesPerStep) + '\n')

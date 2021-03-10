@@ -5,7 +5,7 @@ import torch.optim as optim
 import torch.nn as nn
 import dnnlib
 import os
-from torchvision.models.segmentation import deeplabv3_resnet50
+from torchvision.models.segmentation import deeplabv3_resnet50, deeplabv3_resnet101
 
 
 class DenseNet(nn.Module):
@@ -184,7 +184,7 @@ def main():
     weight_decay = 1e-5
     # model = ResNet(in_channels=in_channels, channels=channels, kernel_size=kernel_size, segmentation_channels=segmentation_channels)
     # model = DenseNet(in_channels=in_channels, expansion_rate=expansion_rate, bottleneck_rate=bottleneck_rate, num_layers=num_layers, kernel_size=kernel_size, segmentation_channels=segmentation_channels)
-    model = deeplabv3_resnet50(num_classes=segmentation_channels)
+    model = deeplabv3_resnet101(num_classes=segmentation_channels)
     model = model.to(device)
 
     # load_model = torch.load('networks/res/0/9.pt')

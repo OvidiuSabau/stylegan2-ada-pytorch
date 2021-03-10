@@ -176,6 +176,7 @@ def main():
     kernel_size = 5
     numBatchesPerStep = 32
     lr = 5 * 1e-5
+    weight_decay = 1e-5
     # model = ResNet(in_channels=in_channels, channels=channels, kernel_size=kernel_size, segmentation_channels=segmentation_channels)
     model = DenseNet(in_channels=in_channels, expansion_rate=expansion_rate, bottleneck_rate=bottleneck_rate, num_layers=num_layers, kernel_size=kernel_size, segmentation_channels=segmentation_channels)
     model = model.to(device)
@@ -184,7 +185,7 @@ def main():
     load_model = torch.load('networks/dense/2/9.pt')
     model.load_state_dict(load_model.state_dict())
 
-    optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=0)
+    optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
     lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer=optimizer, factor=0.5, patience=0, threshold=1e-2, eps=1e-6, verbose=True)
 
     with open(write_prefix + 'train-config.txt', 'w') as file:

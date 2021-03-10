@@ -175,13 +175,17 @@ def main():
     segmentation_channels = 3
     kernel_size = 5
     numBatchesPerStep = 32
-    lr = 5 * 1e-4
+    lr = 5 * 1e-5
     # model = ResNet(in_channels=in_channels, channels=channels, kernel_size=kernel_size, segmentation_channels=segmentation_channels)
     model = DenseNet(in_channels=in_channels, expansion_rate=expansion_rate, bottleneck_rate=bottleneck_rate, num_layers=num_layers, kernel_size=kernel_size, segmentation_channels=segmentation_channels)
     model = model.to(device)
 
-    optimizer = optim.Adam(model.parameters(), lr=lr)
-    lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer=optimizer, factor=0.5, patience=1, threshold=1e-3, eps=1e-6, verbose=True)
+
+    load_model = torch.load('networks/dense/2/9.pt')
+    model.load_state_dict(load_model.state_dict())
+
+    optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=0)
+    lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer=optimizer, factor=0.5, patience=0, threshold=1e-2, eps=1e-6, verbose=True)
 
     with open(write_prefix + 'train-config.txt', 'w') as file:
         # file.write('channels ' + str(channels) + '\n')
@@ -277,7 +281,8 @@ def main():
         np.save(write_prefix + str(epoch) + '-testAcc', np.stack(testAcc))
         np.save(write_prefix + str(epoch) + '-trainAcc', np.stack(trainAcc))
 
-        print('Epoch {} finished in {:.1f}'.format(epoch, time.time() - epoch_t0))
+        print('Epoch {} finished in {:.1f} | Avg Loss {:.4f} Acc {:.4f}'.format(
+            epoch, time.time() - epoch_t0, np.mean(trainLosses[-num_train_batches:]), np.mean(trainAcc[-num_train_batches:])))
 
 
 if __name__ == "__main__":

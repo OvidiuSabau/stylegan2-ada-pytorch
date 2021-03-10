@@ -153,7 +153,7 @@ def main():
     num_train_batches = int(np.ceil(trainingData.shape[0] / train_batch_size))
     num_test_batches = int(np.ceil(testingData.shape[0] / test_batch_size))
 
-    architecture = 'dense'
+    architecture = 'res'
 
     path = os.getcwd() + '/networks/' + architecture + '/'
     if not os.path.exists(path):
@@ -167,7 +167,7 @@ def main():
 
     write_prefix = path + str(i) + '/'
 
-    # channels = [8, 32, 64, 128, 256, 128, 64, 64, 32]
+    channels = [8, 32, 64, 128, 256, 128, 64, 64, 32]
     expansion_rate = 12
     bottleneck_rate = 4
     num_layers = 14
@@ -177,22 +177,22 @@ def main():
     numBatchesPerStep = 32
     lr = 5 * 1e-5
     weight_decay = 1e-5
-    # model = ResNet(in_channels=in_channels, channels=channels, kernel_size=kernel_size, segmentation_channels=segmentation_channels)
-    model = DenseNet(in_channels=in_channels, expansion_rate=expansion_rate, bottleneck_rate=bottleneck_rate, num_layers=num_layers, kernel_size=kernel_size, segmentation_channels=segmentation_channels)
+    model = ResNet(in_channels=in_channels, channels=channels, kernel_size=kernel_size, segmentation_channels=segmentation_channels)
+    # model = DenseNet(in_channels=in_channels, expansion_rate=expansion_rate, bottleneck_rate=bottleneck_rate, num_layers=num_layers, kernel_size=kernel_size, segmentation_channels=segmentation_channels)
     model = model.to(device)
 
 
-    load_model = torch.load('networks/dense/2/9.pt')
+    load_model = torch.load('networks/res/0/9.pt')
     model.load_state_dict(load_model.state_dict())
 
     optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
     lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer=optimizer, factor=0.5, patience=0, threshold=1e-2, eps=1e-6, verbose=True)
 
     with open(write_prefix + 'train-config.txt', 'w') as file:
-        # file.write('channels ' + str(channels) + '\n')
-        file.write('expansion_rate ' + str(expansion_rate) + '\n')
-        file.write('bottleneck_rate ' + str(bottleneck_rate) + '\n')
-        file.write('num_layers ' + str(num_layers) + '\n')
+        file.write('channels ' + str(channels) + '\n')
+        # file.write('expansion_rate ' + str(expansion_rate) + '\n')
+        # file.write('bottleneck_rate ' + str(bottleneck_rate) + '\n')
+        # file.write('num_layers ' + str(num_layers) + '\n')
         file.write('kernel_size ' + str(kernel_size) + '\n')
         file.write('batch_size ' + str(train_batch_size) + '\n')
         file.write('numBatchesPerStep ' + str(numBatchesPerStep) + '\n')

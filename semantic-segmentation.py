@@ -150,7 +150,7 @@ def main():
     testingData = np.load('preprocessed-datasets/celebmask-test.npy')
 
     criterion = nn.CrossEntropyLoss()
-    train_batch_size = 4
+    train_batch_size = 2
     test_batch_size = 8
     num_train_batches = int(np.ceil(trainingData.shape[0] / train_batch_size))
     num_test_batches = int(np.ceil(testingData.shape[0] / test_batch_size))
@@ -179,7 +179,7 @@ def main():
     # in_channels = 3
     segmentation_channels = 3
     # kernel_size = 5
-    numBatchesPerStep = 32
+    numBatchesPerStep = 64
     lr = 5 * 1e-4
     weight_decay = 1e-5
     # model = ResNet(in_channels=in_channels, channels=channels, kernel_size=kernel_size, segmentation_channels=segmentation_channels)

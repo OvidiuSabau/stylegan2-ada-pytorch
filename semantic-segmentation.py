@@ -5,6 +5,8 @@ import torch.optim as optim
 import torch.nn as nn
 import dnnlib
 import os
+from torchvision.models.segmentation import deeplabv3_resnet50, deeplabv3_resnet101
+
 
 class DenseNet(nn.Module):
     def __init__(
@@ -148,12 +150,15 @@ def main():
     testingData = np.load('preprocessed-datasets/celebmask-test.npy')
 
     criterion = nn.CrossEntropyLoss()
-    train_batch_size = 8
-    test_batch_size = 16
+    train_batch_size = 2
+    test_batch_size = 8
     num_train_batches = int(np.ceil(trainingData.shape[0] / train_batch_size))
     num_test_batches = int(np.ceil(testingData.shape[0] / test_batch_size))
 
-    architecture = 'dense'
+    mean = torch.from_numpy(np.load('train-mean.npy')).float().to(device)
+    std = torch.from_numpy(np.load('train-std.npy')).float().to(device)
+
+    architecture = 'deeplab'
 
     path = os.getcwd() + '/networks/' + architecture + '/'
     if not os.path.exists(path):
@@ -168,30 +173,37 @@ def main():
     write_prefix = path + str(i) + '/'
 
     # channels = [8, 32, 64, 128, 256, 128, 64, 64, 32]
-    expansion_rate = 12
-    bottleneck_rate = 4
-    num_layers = 14
-    in_channels = 3
+    # expansion_rate = 12
+    # bottleneck_rate = 4
+    # num_layers = 14
+    # in_channels = 3
     segmentation_channels = 3
-    kernel_size = 5
-    numBatchesPerStep = 32
+    # kernel_size = 5
+    numBatchesPerStep = 64
     lr = 5 * 1e-4
+    weight_decay = 1e-5
     # model = ResNet(in_channels=in_channels, channels=channels, kernel_size=kernel_size, segmentation_channels=segmentation_channels)
-    model = DenseNet(in_channels=in_channels, expansion_rate=expansion_rate, bottleneck_rate=bottleneck_rate, num_layers=num_layers, kernel_size=kernel_size, segmentation_channels=segmentation_channels)
+    # model = DenseNet(in_channels=in_channels, expansion_rate=expansion_rate, bottleneck_rate=bottleneck_rate, num_layers=num_layers, kernel_size=kernel_size, segmentation_channels=segmentation_channels)
+    model = deeplabv3_resnet101(num_classes=segmentation_channels)
     model = model.to(device)
 
-    optimizer = optim.Adam(model.parameters(), lr=lr)
-    lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer=optimizer, factor=0.5, patience=1, threshold=1e-3, eps=1e-6, verbose=True)
+    # load_model = torch.load('networks/res/0/9.pt')
+    # model.load_state_dict(load_model.state_dict())
+
+    optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
+    lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer=optimizer, factor=0.5, patience=0, threshold=1e-2, eps=1e-6, verbose=True)
 
     with open(write_prefix + 'train-config.txt', 'w') as file:
         # file.write('channels ' + str(channels) + '\n')
-        file.write('expansion_rate ' + str(expansion_rate) + '\n')
-        file.write('bottleneck_rate ' + str(bottleneck_rate) + '\n')
-        file.write('num_layers ' + str(num_layers) + '\n')
-        file.write('kernel_size ' + str(kernel_size) + '\n')
+        # file.write('expansion_rate ' + str(expansion_rate) + '\n')
+        # file.write('bottleneck_rate ' + str(bottleneck_rate) + '\n')
+        # file.write('num_layers ' + str(num_layers) + '\n')
+        # file.write('kernel_size ' + str(kernel_size) + '\n')
         file.write('batch_size ' + str(train_batch_size) + '\n')
         file.write('numBatchesPerStep ' + str(numBatchesPerStep) + '\n')
         file.write('lr' + str(lr) + '\n')
+        file.write('weight_decay' + str(weight_decay) + '\n')
+
 
 
     testLosses = []
@@ -199,7 +211,7 @@ def main():
     trainLosses = []
     trainAcc = []
 
-    for epoch in range(10):
+    for epoch in range(25):
 
         print('Starting Epoch {}'.format(epoch))
         epoch_t0 = time.time()
@@ -213,10 +225,11 @@ def main():
             for batch in range(num_test_batches):
                 x = torch.from_numpy(
                     testingData[batch * test_batch_size: (batch + 1) * test_batch_size, :3]).float().to(device)
+                x = (x - mean) / std
                 y = torch.from_numpy(testingData[batch * test_batch_size: (batch + 1) * test_batch_size, 3]).long().to(
                     device)
 
-                y_hat = model(x)
+                y_hat = model(x)['out']
                 loss = criterion(y_hat, y)
                 argmax = torch.argmax(y_hat, dim=1)
                 acc = (torch.sum(torch.eq(argmax, y)) / y.nelement()).cpu().detach()
@@ -241,10 +254,11 @@ def main():
 
             x = torch.from_numpy(trainingData[batch * train_batch_size: (batch + 1) * train_batch_size, :3]).float().to(
                 device)
+            x = (x - mean) / std
             y = torch.from_numpy(trainingData[batch * train_batch_size: (batch + 1) * train_batch_size, 3]).long().to(
                 device)
 
-            y_hat = model(x)
+            y_hat = model(x)['out']
             loss = criterion(y_hat, y)
 
             argmax = torch.argmax(y_hat, dim=1)
@@ -277,7 +291,8 @@ def main():
         np.save(write_prefix + str(epoch) + '-testAcc', np.stack(testAcc))
         np.save(write_prefix + str(epoch) + '-trainAcc', np.stack(trainAcc))
 
-        print('Epoch {} finished in {:.1f}'.format(epoch, time.time() - epoch_t0))
+        print('Epoch {} finished in {:.1f} | Avg Loss {:.4f} Acc {:.4f}'.format(
+            epoch, time.time() - epoch_t0, np.mean(trainLosses[-num_train_batches:]), np.mean(trainAcc[-num_train_batches:])))
 
 
 if __name__ == "__main__":

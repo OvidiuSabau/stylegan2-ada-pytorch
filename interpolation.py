@@ -90,8 +90,8 @@ def interpolation(
     w_h = project(G, hair, device=torch.device('cuda'))[-1].unsqueeze(0)
     w_p = project(G, identity, device=torch.device('cuda'))[-1].unsqueeze(0)
 
-    np.savez(f'{outdir}/projected_w_h.npz', w=w_h.cpu().numpy())
-    np.savez(f'{outdir}/projected_w_p.npz', w=w_p.cpu().numpy())
+    np.savez(f'interp/projected_w_h.npz', w=w_h.cpu().numpy())
+    np.savez(f'interp/projected_w_p.npz', w=w_p.cpu().numpy())
 
     q_opt = torch.tensor(q_avg, dtype=torch.float32, device=device, requires_grad=True) # pylint: disable=not-callable
     # list of all target ws through optimization

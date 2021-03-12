@@ -43,6 +43,7 @@ def interpolation(
     device: torch.device
 ):
 
+
     assert identity.shape == (G.img_channels, G.img_resolution, G.img_resolution)
 
     def logprint(*args):
@@ -65,17 +66,20 @@ def interpolation(
     # with dnnlib.util.open_url(url) as f:
     #     vgg16 = torch.jit.load(f).eval().to(device)
 
+    seg_channel_dict = {
+        'h': 0,
+        'i': 1,
+        'b': 2
+    }
+
     vgg16 = torch.jit.load('vgg16.pt').eval().to(device)
     segNet = torch.load('segNet.pt').eval().to('cuda')
     segNet_mean = torch.from_numpy(np.load('train-mean.npy')).float().to(device)
     segNet_std = torch.from_numpy(np.load('train-std.npy')).float().to(device)
 
-    identity = (identity - segNet_mean) / segNet_std
-    hair = (hair - segNet_mean) / segNet_std
-
     # TODO: img -> masked_img
-    masked_identity_img = segNet(identity)
-    masked_hair_img = segNet(hair)
+    masked_identity_img = apply_seg_mask(identity, seg_channel_dict['i'])
+    masked_hair_img = apply_seg_mask(hair, seg_channel_dict['h'])
 
     # Features for identity image.
     masked_identity_img = identity.unsqueeze(0).to(device).to(torch.float32)
@@ -137,8 +141,8 @@ def interpolation(
             target_image = F.interpolate(target_image, size=(256, 256), mode='area')
 
         # TODO: img -> masked_img
-        hair_target_image = target_image
-        identity_target_image = target_image.clone().detach()
+        hair_target_image = apply_seg_mask(target_image, seg_channel_dict['h'])
+        identity_target_image = apply_seg_mask(target_image, seg_channel_dict['i'])
 
         print("running target features through vgg")
         # Features for synth images.
@@ -179,6 +183,16 @@ def interpolation(
                 buf *= buf.square().mean().rsqrt()
 
     return w_out.repeat([1, G.mapping.num_ws, 1])
+
+    def apply_seg_mask(
+        x: torch.Tensor,
+        channel: int
+    ):
+        x = (x - segNet_mean) / segNet_std
+        segmentation = segNet(x)['out']
+        mask = torch.argmax(segmentation, dim=1)
+        return x * mask[:,channel,:,:]
+ 
 
 #----------------------------------------------------------------------------
 

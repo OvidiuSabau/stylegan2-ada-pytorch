@@ -190,7 +190,7 @@ def interpolation(
                 buf -= buf.mean()
                 buf *= buf.square().mean().rsqrt()
 
-    return w_out.repeat([1, G.mapping.num_ws, 1])
+    return w_out #.repeat([1, G.mapping.num_ws, 1])
  
 
 #----------------------------------------------------------------------------

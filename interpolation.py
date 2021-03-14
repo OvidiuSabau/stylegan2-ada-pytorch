@@ -101,14 +101,13 @@ def interpolation(
     hair_features = vgg16(masked_hair_img, resize_images=False, return_lpips=True)
 
     # Loading the projection of images to save time when debugging
-    w_h = torch.from_numpy(np.load("projected_w_h.npz")['w'].squeeze()).to('cuda')  #(18,512)
-    w_p = torch.from_numpy(np.load("projected_w_p.npz")['w'].squeeze()).to('cuda')  #(18,512)
+    w_h = torch.from_numpy(np.load("projected_w_h.npz")['w']).to('cuda')  #(18,512)
+    w_p = torch.from_numpy(np.load("projected_w_p.npz")['w']).to('cuda')  #(18,512)
 
-    # uncomment to generate real w
-    # w_h = project(G, hair, device=torch.device('cuda'))[-1].unsqueeze(0)
-    # w_p = project(G, identity, device=torch.device('cuda'))[-1].unsqueeze(0)
+    # w_h = project(G, hair, device=torch.device('cuda'))[-1]
+    # w_p = project(G, identity, device=torch.device('cuda'))[-1]
     #
-    # np.savez(f'projected_w_h.npz', w=w_h.cpu().numpy())
+    # np.savez(f'projected_w_h.npz', w=w_h.cpu().numpy())  hair image is pic1.jpg and identity is pic2.jpg
     # np.savez(f'projected_w_p.npz', w=w_p.cpu().numpy())
 
     q_opt = torch.tensor(q_avg, dtype=torch.float32, device=device, requires_grad=True) # pylint: disable=not-callable
@@ -137,7 +136,7 @@ def interpolation(
         q_noise = torch.randn_like(q_opt) * q_noise_scale
 
         # Q = torch.eye(G.num_ws).to('cuda') * (q_opt + q_noise).squeeze()
-        Q = torch.eye(G.num_ws).to('cuda') * (q_opt).squeeze()
+        Q = torch.eye(G.num_ws).to('cuda') * (q_opt + q_noise).squeeze()
         w_t = w_p + torch.matmul(Q, w_h - w_p)
 
         # Downsample image to 256x256 if it's larger than that. VGG was built for 224x224 images.
@@ -171,8 +170,8 @@ def interpolation(
                     break
                 noise = F.avg_pool2d(noise, kernel_size=2)
 
-        # loss = dist + reg_loss * regularize_noise_weight
-        loss = dist
+        loss = dist + reg_loss * regularize_noise_weight
+        # loss = dist
 
         # Step
         print("optimizer steps")

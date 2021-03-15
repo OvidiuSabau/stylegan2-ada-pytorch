@@ -53,10 +53,10 @@ def interpolation(
     G = copy.deepcopy(G).eval().requires_grad_(False).to(device) # type: ignore
 
     # Compute q stats.
-    logprint(f'Computing W midpoint and stddev using {q_avg_samples} samples...')
-    q_samples = np.random.RandomState(123).randn(q_avg_samples, G.num_ws)
-    q_avg = np.mean(q_samples, axis=0, keepdims=True)     # [G.w_dim]
-    q_std = (np.sum((q_samples - q_avg) ** 2) / q_avg_samples) ** 0.5
+    # logprint(f'Computing W midpoint and stddev using {q_avg_samples} samples...')
+    # q_samples = np.random.RandomState(123).randn(q_avg_samples, G.num_ws)
+    # q_avg = np.mean(q_samples, axis=0, keepdims=True)     # [G.w_dim]
+    # q_std = (np.sum((q_samples - q_avg) ** 2) / q_avg_samples) ** 0.5
 
     # Setup noise inputs.
     noise_bufs = { name: buf for (name, buf) in G.synthesis.named_buffers() if 'noise_const' in name }
@@ -79,6 +79,7 @@ def interpolation(
 
     def apply_seg_mask(
         x: torch.Tensor,
+
         channel: int
     ):
         x_norm = (x - segNet_mean) / segNet_std
@@ -101,16 +102,18 @@ def interpolation(
     hair_features = vgg16(masked_hair_img, resize_images=False, return_lpips=True)
 
     # Loading the projection of images to save time when debugging
-    w_h = torch.from_numpy(np.load("projected_w_h.npz")['w']).to('cuda')  #(18,512)
-    w_p = torch.from_numpy(np.load("projected_w_p.npz")['w']).to('cuda')  #(18,512)
+    w_h = torch.from_numpy(np.load("projected_w_h.npz")['w'][0]).to('cuda')  #(18,512)
+    w_p = torch.from_numpy(np.load("projected_w_p.npz")['w'][0]).to('cuda')  #(18,512)
 
-    # w_h = project(G, hair, device=torch.device('cuda'))[-1]
-    # w_p = project(G, identity, device=torch.device('cuda'))[-1]
+    # w_h = project(G, hair, device=torch.device('cuda'))[-1][0]
+    # w_p = project(G, identity, device=torch.device('cuda'))[-1][0]
     #
     # np.savez(f'projected_w_h.npz', w=w_h.cpu().numpy())  hair image is pic1.jpg and identity is pic2.jpg
     # np.savez(f'projected_w_p.npz', w=w_p.cpu().numpy())
 
-    q_opt = torch.tensor(q_avg, dtype=torch.float32, device=device, requires_grad=True) # pylint: disable=not-callable
+    # q_opt = torch.tensor(q_avg, dtype=torch.float32, device=device, requires_grad=True) # pylint: disable=not-callable
+    q_opt = torch.nn.Parameter(torch.randn(size=w_p.shape[1:], dtype=torch.float32, requires_grad=True, device=device))
+
     # list of all target ws through optimization
     w_out = torch.zeros([num_steps] + list(w_h.shape), dtype=torch.float32, device=device)
     optimizer = torch.optim.Adam([q_opt] + list(noise_bufs.values()), betas=(0.9, 0.999), lr=initial_learning_rate)
@@ -124,7 +127,7 @@ def interpolation(
         print("iteration ", step)
         # Learning rate schedule.
         t = step / num_steps
-        q_noise_scale = q_std * initial_noise_factor * max(0.0, 1.0 - t / noise_ramp_length) ** 2
+        # q_noise_scale = q_std * initial_noise_factor * max(0.0, 1.0 - t / noise_ramp_length) ** 2
         lr_ramp = min(1.0, (1.0 - t) / lr_rampdown_length)
         lr_ramp = 0.5 - 0.5 * np.cos(lr_ramp * np.pi)
         lr_ramp = lr_ramp * min(1.0, t / lr_rampup_length)
@@ -133,14 +136,16 @@ def interpolation(
             param_group['lr'] = lr
 
         # Synth images from opt_w.
-        q_noise = torch.randn_like(q_opt) * q_noise_scale
+        # q_noise = torch.randn_like(q_opt) * q_noise_scale
 
+        # Q = torch.eye(G.num_ws).to('cuda') * q_opt.squeeze()
         # Q = torch.eye(G.num_ws).to('cuda') * (q_opt + q_noise).squeeze()
-        Q = torch.eye(G.num_ws).to('cuda') * (q_opt + q_noise).squeeze()
-        w_t = w_p + torch.matmul(Q, w_h - w_p)
+        w_t = w_p + q_opt.sigmoid() * (w_h - w_p)
+        ws = w_t.unsqueeze(0)
+
 
         # Downsample image to 256x256 if it's larger than that. VGG was built for 224x224 images.
-        target_image = G.synthesis(w_t.unsqueeze(0), noise_mode='const')
+        target_image = G.synthesis(ws, noise_mode='const')
         target_image = (target_image + 1) * (255/2)
         if target_image.shape[2] > 256:
             target_image = F.interpolate(target_image, size=(256, 256), mode='area')
@@ -149,7 +154,7 @@ def interpolation(
         hair_target_image = apply_seg_mask(target_image, seg_channel_dict['h'])
         identity_target_image = apply_seg_mask(target_image, seg_channel_dict['i'])
 
-        print("running target features through vgg")
+        # print("running target features through vgg")
         # Features for synth images.
         target_hair_features = vgg16(hair_target_image, resize_images=False, return_lpips=True)
         target_identity_features = vgg16(identity_target_image, resize_images=False, return_lpips=True)
@@ -170,8 +175,8 @@ def interpolation(
                     break
                 noise = F.avg_pool2d(noise, kernel_size=2)
 
-        loss = dist + reg_loss * regularize_noise_weight
-        # loss = dist
+        loss = dist
+        # loss += reg_loss * regularize_noise_weight
 
         # Step
         print("optimizer steps")
@@ -181,7 +186,7 @@ def interpolation(
         logprint(f'step {step+1:>4d}/{num_steps}: dist {dist:<4.2f} loss {float(loss):<5.2f}')
 
         # Save projected W for each optimization step.
-        w_out[step] = w_t.detach()[0]
+        w_out[step] = w_t.detach()
 
         # Normalize noise.
         with torch.no_grad():
@@ -189,7 +194,7 @@ def interpolation(
                 buf -= buf.mean()
                 buf *= buf.square().mean().rsqrt()
 
-    return w_out #.repeat([1, G.mapping.num_ws, 1])
+    return w_out
  
 
 #----------------------------------------------------------------------------
@@ -264,7 +269,7 @@ def run_projection(
             synth_image = G.synthesis(projected_w.unsqueeze(0), noise_mode='const')
             synth_image = (synth_image + 1) * (255/2)
             synth_image = synth_image.permute(0, 2, 3, 1).clamp(0, 255).to(torch.uint8)[0].cpu().numpy()
-            video.append_data(np.concatenate([identity_uint8, synth_image], axis=1))
+            video.append_data(np.concatenate([identity_uint8, hair_uint8, synth_image], axis=1))
         video.close()
 
     # Save final projected frame and W vector.

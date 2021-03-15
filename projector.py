@@ -69,7 +69,7 @@ def project(
         target_images = F.interpolate(target_images, size=(256, 256), mode='area')
     target_features = vgg16(target_images, resize_images=False, return_lpips=True)
 
-    w_opt = torch.tensor(torch.from_numpy(w_avg).repeat_interleave(repeats=G.mapping.num_ws, dim=1), dtype=torch.float32, device=device, requires_grad=True) # pylint: disable=not-callable
+    w_opt = torch.tensor(w_avg, dtype=torch.float32, device=device, requires_grad=True) # pylint: disable=not-callable
     w_out = torch.zeros([num_steps] + list(w_opt.shape[1:]), dtype=torch.float32, device=device)
     optimizer = torch.optim.Adam([w_opt] + list(noise_bufs.values()), betas=(0.9, 0.999), lr=initial_learning_rate)
 
@@ -91,8 +91,7 @@ def project(
 
         # Synth images from opt_w.
         w_noise = torch.randn_like(w_opt) * w_noise_scale
-        ws = (w_opt + w_noise)
-
+        ws = (w_opt + w_noise).repeat([1, G.mapping.num_ws, 1])
         synth_images = G.synthesis(ws, noise_mode='const')
 
         # Downsample image to 256x256 if it's larger than that. VGG was built for 224x224 images.
@@ -131,7 +130,7 @@ def project(
                 buf -= buf.mean()
                 buf *= buf.square().mean().rsqrt()
 
-    return w_out
+    return w_out.repeat([1, G.mapping.num_ws, 1])
 
 #----------------------------------------------------------------------------
 

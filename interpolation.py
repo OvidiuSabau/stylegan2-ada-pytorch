@@ -32,7 +32,7 @@ def interpolation(
     alpha1                     = 1.0,
     alpha2                     = 1.0,
     num_steps                  = 500,
-    q_avg_samples              = 10000,
+    w_avg_samples              = 10000,
     initial_learning_rate      = 0.1,
     initial_noise_factor       = 0.05,
     lr_rampdown_length         = 0.25,
@@ -53,10 +53,10 @@ def interpolation(
     G = copy.deepcopy(G).eval().requires_grad_(False).to(device) # type: ignore
 
     # Compute q stats.
-    # logprint(f'Computing W midpoint and stddev using {q_avg_samples} samples...')
-    # q_samples = np.random.RandomState(123).randn(q_avg_samples, G.num_ws)
-    # q_avg = np.mean(q_samples, axis=0, keepdims=True)     # [G.w_dim]
-    # q_std = (np.sum((q_samples - q_avg) ** 2) / q_avg_samples) ** 0.5
+    logprint(f'Computing W midpoint and stddev using {w_avg_samples} samples...')
+    w_samples = np.random.RandomState(123).randn(w_avg_samples, G.num_ws)
+    w_avg = np.mean(w_samples, axis=0, keepdims=True)     # [G.w_dim]
+    w_std = (np.sum((w_samples - w_avg) ** 2) / w_avg_samples) ** 0.5
 
     # Setup noise inputs.
     noise_bufs = { name: buf for (name, buf) in G.synthesis.named_buffers() if 'noise_const' in name }
@@ -72,8 +72,15 @@ def interpolation(
         'b': 2
     }
 
+    zeroTensor = torch.zeros(1, requires_grad=False).to(device)
+    epsTensor = torch.tensor([1e-6], requires_grad=False).to(device)
+
     vgg16 = torch.jit.load('vgg16.pt').eval().to(device)
-    segNet = torch.load('segNet.pt').eval().to('cuda')
+    segNet = torch.load('segNet.pt').eval().to(device)
+
+    for name, parameter in segNet.named_parameters():
+        parameter.requires_grad = False
+
     segNet_mean = torch.from_numpy(np.load('train-mean.npy')).float().to(device)
     segNet_std = torch.from_numpy(np.load('train-std.npy')).float().to(device)
 
@@ -84,21 +91,24 @@ def interpolation(
     ):
         x_norm = (x - segNet_mean) / segNet_std
         segmentation = segNet(x_norm)['out']
-        mask = torch.argmax(segmentation, dim=1)
-        mask[mask == channel] = 10
-        mask[mask != 10] = 0
-        return x * (mask/10)
+        maxs = torch.max(segmentation, dim=1)[0].unsqueeze(1)
+        afterSubtraction = segmentation - maxs + epsTensor
+        finalMask = torch.round(torch.max(zeroTensor, afterSubtraction) / epsTensor)
+
+        return x * finalMask[:, channel]
 
     # Features for identity image.
     if identity.shape[2] > 256:
-        masked_identity_img = F.interpolate(identity.unsqueeze(0).to(torch.float32), size=(256, 256), mode='area')
-    masked_identity_img = apply_seg_mask(masked_identity_img, seg_channel_dict['i']).to('cuda').to(torch.float32)
+        identity = F.interpolate(identity.unsqueeze(0).to(torch.float32), size=(256, 256), mode='area')
+
+    masked_identity_img = apply_seg_mask(identity, seg_channel_dict['i']).to('cuda').to(torch.float32)
     identity_features = vgg16(masked_identity_img, resize_images=False, return_lpips=True)
 
     # Features for hair image.
     if hair.shape[2] > 256:
-        masked_hair_img = F.interpolate(hair.unsqueeze(0).to(torch.float32), size=(256, 256), mode='area')
-    masked_hair_img = apply_seg_mask(masked_hair_img, seg_channel_dict['h']).to('cuda').to(torch.float32)
+        hair = F.interpolate(hair.unsqueeze(0).to(torch.float32), size=(256, 256), mode='area')
+
+    masked_hair_img = apply_seg_mask(hair, seg_channel_dict['h']).to('cuda').to(torch.float32)
     hair_features = vgg16(masked_hair_img, resize_images=False, return_lpips=True)
 
     # Loading the projection of images to save time when debugging
@@ -111,7 +121,6 @@ def interpolation(
     # np.savez(f'projected_w_h.npz', w=w_h.cpu().numpy())  hair image is pic1.jpg and identity is pic2.jpg
     # np.savez(f'projected_w_p.npz', w=w_p.cpu().numpy())
 
-    # q_opt = torch.tensor(q_avg, dtype=torch.float32, device=device, requires_grad=True) # pylint: disable=not-callable
     q_opt = torch.nn.Parameter(torch.randn(size=w_p.shape[1:], dtype=torch.float32, requires_grad=True, device=device))
 
     # list of all target ws through optimization
@@ -127,7 +136,7 @@ def interpolation(
         print("iteration ", step)
         # Learning rate schedule.
         t = step / num_steps
-        # q_noise_scale = q_std * initial_noise_factor * max(0.0, 1.0 - t / noise_ramp_length) ** 2
+        w_noise_scale = w_std * initial_noise_factor * max(0.0, 1.0 - t / noise_ramp_length) ** 2
         lr_ramp = min(1.0, (1.0 - t) / lr_rampdown_length)
         lr_ramp = 0.5 - 0.5 * np.cos(lr_ramp * np.pi)
         lr_ramp = lr_ramp * min(1.0, t / lr_rampup_length)
@@ -136,12 +145,9 @@ def interpolation(
             param_group['lr'] = lr
 
         # Synth images from opt_w.
-        # q_noise = torch.randn_like(q_opt) * q_noise_scale
-
-        # Q = torch.eye(G.num_ws).to('cuda') * q_opt.squeeze()
-        # Q = torch.eye(G.num_ws).to('cuda') * (q_opt + q_noise).squeeze()
+        w_noise = torch.randn_like(w_p) * w_noise_scale
         w_t = w_p + q_opt.sigmoid() * (w_h - w_p)
-        ws = w_t.unsqueeze(0)
+        ws = w_t.unsqueeze(0) + w_noise
 
 
         # Downsample image to 256x256 if it's larger than that. VGG was built for 224x224 images.
@@ -151,8 +157,19 @@ def interpolation(
             target_image = F.interpolate(target_image, size=(256, 256), mode='area')
 
         # TODO: img -> masked_img
-        hair_target_image = apply_seg_mask(target_image, seg_channel_dict['h'])
-        identity_target_image = apply_seg_mask(target_image, seg_channel_dict['i'])
+
+        target_image_norm = (target_image - segNet_mean) / segNet_std
+        segmentation = segNet(target_image_norm)['out']
+        maxs = torch.max(segmentation, dim=1)[0].unsqueeze(1)
+        afterSubtraction = segmentation - maxs + epsTensor
+        finalMasks = torch.round(torch.max(zeroTensor, afterSubtraction) / epsTensor)
+
+        hair_target_image = target_image * finalMasks[:, seg_channel_dict['h']]
+        identity_target_image = target_image * finalMasks[:, seg_channel_dict['i']]
+
+        # print(hair_target_image.squeeze(0).cpu().detach().numpy().transpose(1, 2, 0).shape)
+        # PIL.Image.fromarray(masked_hair_img.squeeze(0).cpu().detach().numpy().transpose(1, 2, 0).astype(np.uint8)).save('hair.png')
+        # PIL.Image.fromarray(masked_identity_img.squeeze(0).cpu().detach().numpy().transpose(1, 2, 0).astype(np.uint8)).save('identity.png')
 
         # print("running target features through vgg")
         # Features for synth images.
@@ -164,7 +181,7 @@ def interpolation(
         identity_dist = (target_identity_features - identity_features).square().sum()
         dist = alpha1 * hair_dist + alpha2 * identity_dist
 
-        # Noise regularization.
+        # # Noise regularization.
         reg_loss = 0.0
         for v in noise_bufs.values():
             noise = v[None,None,:,:] # must be [1,1,H,W] for F.avg_pool2d()
@@ -176,7 +193,7 @@ def interpolation(
                 noise = F.avg_pool2d(noise, kernel_size=2)
 
         loss = dist
-        # loss += reg_loss * regularize_noise_weight
+        loss += reg_loss * regularize_noise_weight
 
         # Step
         print("optimizer steps")

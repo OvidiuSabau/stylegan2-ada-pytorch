@@ -148,13 +148,13 @@ def interpolation(
         masks = torch.argmax(segmentation, dim=1)
 
         # Segmentation for hair
-        hairMask = masks.copy()
+        hairMask = masks.detach().clone()
         hairMask[hairMask == seg_channel_dict['h']] = 10
         hairMask[hairMask != 0] = 0
         hair_target_image = target_image * (hairMask / 10)
 
         # Segmentation for identity
-        identityMask = masks.copy()
+        identityMask = masks.detach().clone()
         identityMask[identityMask == seg_channel_dict['i']] = 10
         identityMask[identityMask != 0] = 0
         identity_target_image = target_image * (identityMask / 10)

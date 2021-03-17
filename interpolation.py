@@ -142,8 +142,22 @@ def interpolation(
             target_image = F.interpolate(target_image, size=(256, 256), mode='area')
 
         # TODO: img -> masked_img
-        hair_target_image = apply_seg_mask(target_image, seg_channel_dict['h'])
-        identity_target_image = apply_seg_mask(target_image, seg_channel_dict['i'])
+
+        target_image_norm = (target_image - segNet_mean) / segNet_std
+        segmentation = segNet(target_image_norm)['out']
+        masks = torch.argmax(segmentation, dim=1)
+
+        # Segmentation for hair
+        hairMask = masks.copy()
+        hairMask[hairMask == seg_channel_dict['h']] = 10
+        hairMask[hairMask != 0] = 0
+        hair_target_image = target_image * (hairMask / 10)
+
+        # Segmentation for identity
+        identityMask = masks.copy()
+        identityMask[identityMask == seg_channel_dict['i']] = 10
+        identityMask[identityMask != 0] = 0
+        identity_target_image = target_image * (identityMask / 10)
 
         # print("running target features through vgg")
         # Features for synth images.

@@ -31,13 +31,13 @@ def interpolation(
     alpha1                     = 1.0,
     alpha2                     = 1.0,
     num_steps                  = 50,
-    q_avg_samples              = 10000,
+    w_avg_samples              = 10000,
     initial_learning_rate      = 0.1,
-    initial_noise_factor       = 0.05,
+    initial_noise_factor       = 5e-1,
     lr_rampdown_length         = 0.25,
     lr_rampup_length           = 0.05,
     noise_ramp_length          = 0.75,
-    regularize_noise_weight    = 1e5,
+    regularize_noise_weight    = 1e2,
     verbose                    = False,
     device: torch.device
 ):
@@ -52,13 +52,13 @@ def interpolation(
     G = copy.deepcopy(G).eval().requires_grad_(False).to(device) # type: ignore
 
     # Compute q stats.
-    # logprint(f'Computing W midpoint and stddev using {q_avg_samples} samples...')
-    # q_samples = np.random.RandomState(123).randn(q_avg_samples, G.num_ws)
-    # q_avg = np.mean(q_samples, axis=0, keepdims=True)     # [G.w_dim]
-    # q_std = (np.sum((q_samples - q_avg) ** 2) / q_avg_samples) ** 0.5
+    # logprint(f'Computing W midpoint and stddev using {w_avg_samples} samples...')
+    # w_samples = np.random.RandomState(123).randn(w_avg_samples, G.num_ws)
+    # w_avg = np.mean(w_samples, axis=0, keepdims=True)     # [G.w_dim]
+    # w_std = (np.sum((w_samples - w_avg) ** 2) / w_avg_samples) ** 0.5
 
     # Setup noise inputs.
-    noise_bufs = { name: buf for (name, buf) in G.synthesis.named_buffers() if 'noise_const' in name }
+    noise_bufs = {name: buf for (name, buf) in G.synthesis.named_buffers() if 'noise_const' in name}
 
     # Load VGG16 feature detector.
     # url = 'https://nvlabs-fi-cdn.nvidia.com/stylegan2-ada-pytorch/pretrained/metrics/vgg16.pt'
@@ -130,8 +130,7 @@ def interpolation(
         print("iteration ", step)
         # Learning rate schedule.
         t = step / num_steps
-        # q_noise_scale = q_std * initial_noise_factor * max(0.0, 1.0 - t / noise_ramp_length) ** 2
-        lr_ramp = min(1.0, (1.0 - t) / lr_rampdown_length)
+        # w_noise_scale = w_std * initial_noise_factor * max(0.0, 1.0 - t / noise_ramp_length) ** 2        lr_ramp = min(1.0, (1.0 - t) / lr_rampdown_length)
         lr_ramp = 0.5 - 0.5 * np.cos(lr_ramp * np.pi)
         lr_ramp = lr_ramp * min(1.0, t / lr_rampup_length)
         lr = initial_learning_rate * lr_ramp
@@ -139,13 +138,8 @@ def interpolation(
             param_group['lr'] = lr
 
         # Synth images from opt_w.
-        # q_noise = torch.randn_like(q_opt) * q_noise_scale
-
-        # Q = torch.eye(G.num_ws).to('cuda') * q_opt.squeeze()
-        # Q = torch.eye(G.num_ws).to('cuda') * (q_opt + q_noise).squeeze()
         w_t = w_p + q_opt.sigmoid() * (w_h - w_p)
         ws = w_t.unsqueeze(0)
-
 
         # Downsample image to 256x256 if it's larger than that. VGG was built for 224x224 images.
         target_image = G.synthesis(ws, noise_mode='const')
@@ -153,11 +147,10 @@ def interpolation(
         if target_image.shape[2] > 256:
             target_image = F.interpolate(target_image, size=(256, 256), mode='area')
 
-        # TODO: img -> masked_img
+        # img -> masked_img
         hair_target_image = apply_seg_mask(target_image, seg_channel_dict['h'])
         identity_target_image = apply_seg_mask(target_image, seg_channel_dict['i'])
 
-        # print("running target features through vgg")
         # Features for synth images.
         target_hair_features = vgg16(hair_target_image, resize_images=False, return_lpips=True)
         target_identity_features = vgg16(identity_target_image, resize_images=False, return_lpips=True)

@@ -105,9 +105,9 @@ def interpolation(
     hair_features = vgg16(masked_hair_img, resize_images=False, return_lpips=True)
 
     # Loading the projection of images to save time when debugging
-    w_h = torch.from_numpy(np.load("img122-project-18/projected_w.npz")['w'][0]).to('cuda')  # (18,512)
-    w_p = torch.from_numpy(np.load("img143-project-18/projected_w.npz")['w'][0]).to('cuda')  # (18,512)
-
+    w_h = torch.from_numpy(np.load("projected_w_p.npz")['w']).to('cuda')  # (18,512)
+    w_p = torch.from_numpy(np.load("projected_w_h.npz")['w']).to('cuda')  # (18,512)
+    print(w_h.shape)
     # w_h = project(G, hair, device=torch.device('cuda'))[-1]
     # w_p = project(G, identity, device=torch.device('cuda'))[-1]
     #
@@ -200,7 +200,7 @@ def interpolation(
 @click.option('--network', 'network_pkl', help='Network pickle filename', required=True)
 @click.option('--hair', 'hair_fname', required=True, metavar='FILE')
 @click.option('--identity', 'identity_fname', required=True, metavar='FILE')
-@click.option('--num-steps',              help='Number of optimization steps', type=int, default=1000, show_default=True)
+@click.option('--num-steps',              help='Number of optimization steps', type=int, default=500, show_default=True)
 @click.option('--seed',                   help='Random seed', type=int, default=303, show_default=True)
 @click.option('--save-video',             help='Save an mp4 video of optimization progress', type=bool, default=True, show_default=True)
 @click.option('--outdir',                 help='Where to save the output images', required=True, metavar='DIR')

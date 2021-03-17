@@ -22,7 +22,6 @@ import torch.nn.functional as F
 import dnnlib
 import legacy
 
-from projector import project
 
 def interpolation(
     G,
@@ -31,7 +30,7 @@ def interpolation(
     *,
     alpha1                     = 1.0,
     alpha2                     = 1.0,
-    num_steps                  = 500,
+    num_steps                  = 50,
     q_avg_samples              = 10000,
     initial_learning_rate      = 0.1,
     initial_noise_factor       = 0.05,
@@ -85,30 +84,34 @@ def interpolation(
         x_norm = (x - segNet_mean) / segNet_std
         segmentation = segNet(x_norm)['out']
         mask = torch.argmax(segmentation, dim=1)
-        mask[mask == channel] = 10
-        mask[mask != 10] = 0
-        return x * (mask/10)
+        mask = mask.squeeze().to('cuda')
+        x = x.squeeze()
+        mask[mask != channel] = 1000
+        x = torch.where(mask != 1000, x, torch.tensor(255.0).to('cuda'))
+        return x.unsqueeze(0)
 
     # Features for identity image.
     if identity.shape[2] > 256:
         masked_identity_img = F.interpolate(identity.unsqueeze(0).to(torch.float32), size=(256, 256), mode='area')
     masked_identity_img = apply_seg_mask(masked_identity_img, seg_channel_dict['i']).to('cuda').to(torch.float32)
+    masked_identity_img = masked_identity_img.to(torch.uint8)
     identity_features = vgg16(masked_identity_img, resize_images=False, return_lpips=True)
 
     # Features for hair image.
     if hair.shape[2] > 256:
         masked_hair_img = F.interpolate(hair.unsqueeze(0).to(torch.float32), size=(256, 256), mode='area')
     masked_hair_img = apply_seg_mask(masked_hair_img, seg_channel_dict['h']).to('cuda').to(torch.float32)
+    masked_hair_img = masked_hair_img.to(torch.uint8)
     hair_features = vgg16(masked_hair_img, resize_images=False, return_lpips=True)
 
     # Loading the projection of images to save time when debugging
-    w_h = torch.from_numpy(np.load("projected_w_h.npz")['w'][0]).to('cuda')  #(18,512)
-    w_p = torch.from_numpy(np.load("projected_w_p.npz")['w'][0]).to('cuda')  #(18,512)
+    w_h = torch.from_numpy(np.load("projected_w_h.npz")['w']).to('cuda')  #(18,512)
+    w_p = torch.from_numpy(np.load("projected_w_p.npz")['w']).to('cuda')  #(18,512)
 
-    # w_h = project(G, hair, device=torch.device('cuda'))[-1][0]
-    # w_p = project(G, identity, device=torch.device('cuda'))[-1][0]
+    # w_h = project(G, hair, device=torch.device('cuda'))[-1]
+    # w_p = project(G, identity, device=torch.device('cuda'))[-1]
     #
-    # np.savez(f'projected_w_h.npz', w=w_h.cpu().numpy())  hair image is pic1.jpg and identity is pic2.jpg
+    # np.savez(f'projected_w_h.npz', w=w_h.cpu().numpy())
     # np.savez(f'projected_w_p.npz', w=w_p.cpu().numpy())
 
     # q_opt = torch.tensor(q_avg, dtype=torch.float32, device=device, requires_grad=True) # pylint: disable=not-callable

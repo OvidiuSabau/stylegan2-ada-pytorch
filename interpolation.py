@@ -39,7 +39,7 @@ def interpolation(
         lr_rampdown_length=0.25,
         lr_rampup_length=0.05,
         noise_ramp_length=0.75,
-        regularize_noise_weight=1e2,
+        regularize_noise_weight=1e5,
         verbose=False,
         device: torch.device
 ):
@@ -101,13 +101,13 @@ def interpolation(
     hair_features = vgg16(masked_hair_img, resize_images=False, return_lpips=True)
 
     # Loading the projection of images to save time when debugging
-    w_h = torch.from_numpy(np.load("img122-project/projected_w.npz")['w'][0]).to('cuda')  # (18,512)
-    w_p = torch.from_numpy(np.load("img143-project/projected_w.npz")['w'][0]).to('cuda')  # (18,512)
+    w_h = torch.from_numpy(np.load("img122-project-18/projected_w.npz")['w'][0]).to('cuda')  # (18,512)
+    w_p = torch.from_numpy(np.load("img143-project-18/projected_w.npz")['w'][0]).to('cuda')  # (18,512)
 
     # w_h = project(G, hair, device=torch.device('cuda'))[-1][0]
     # w_p = project(G, identity, device=torch.device('cuda'))[-1][0]
 
-    q_opt = torch.nn.Parameter(torch.randn(size=w_p.shape, dtype=torch.float32, requires_grad=True, device=device))
+    q_opt = torch.nn.Parameter(torch.randn(size=w_p.shape[1:], dtype=torch.float32, requires_grad=True, device=device))
 
     # list of all target ws through optimization
     w_out = torch.zeros([num_steps] + list(w_h.shape), dtype=torch.float32, device=device)
@@ -143,21 +143,8 @@ def interpolation(
 
         # TODO: img -> masked_img
 
-        target_image_norm = (target_image - segNet_mean) / segNet_std
-        segmentation = segNet(target_image_norm)['out']
-        masks = torch.argmax(segmentation, dim=1)
-
-        # Segmentation for hair
-        hairMask = masks.detach().clone()
-        hairMask[hairMask == seg_channel_dict['h']] = 10
-        hairMask[hairMask != 0] = 0
-        hair_target_image = target_image * (hairMask / 10)
-
-        # Segmentation for identity
-        identityMask = masks.detach().clone()
-        identityMask[identityMask == seg_channel_dict['i']] = 10
-        identityMask[identityMask != 0] = 0
-        identity_target_image = target_image * (identityMask / 10)
+        hair_target_image = apply_seg_mask(target_image, seg_channel_dict['h'])
+        identity_target_image = apply_seg_mask(target_image, seg_channel_dict['i'])
 
         # print("running target features through vgg")
         # Features for synth images.

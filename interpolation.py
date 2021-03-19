@@ -30,7 +30,7 @@ def interpolation(
     *,
     alpha1                     = 1.0,
     alpha2                     = 1.0,
-    num_steps                  = 50,
+    num_steps                  = 1000,
     w_avg_samples              = 10000,
     initial_learning_rate      = 0.1,
     initial_noise_factor       = 5e-1,
@@ -114,7 +114,7 @@ def interpolation(
     # np.savez(f'projected_w_h.npz', w=w_h.cpu().numpy())
     # np.savez(f'projected_w_p.npz', w=w_p.cpu().numpy())
 
-    q_opt = torch.nn.Parameter(torch.randn(size=w_p.shape[1:], dtype=torch.float32, requires_grad=True, device=device))
+    q_opt = torch.nn.Parameter(torch.randn(size=w_p.shape, dtype=torch.float32, requires_grad=True, device=device))
 
     # list of all target ws through optimization
     w_out = torch.zeros([num_steps] + list(w_h.shape), dtype=torch.float32, device=device)

@@ -30,14 +30,14 @@ def interpolation(
     *,
     alpha1                     = 1.0,
     alpha2                     = 1.0,
-    num_steps                  = 1000,
+    num_steps                  = 500,
     w_avg_samples              = 10000,
     initial_learning_rate      = 0.1,
     initial_noise_factor       = 5e-1,
     lr_rampdown_length         = 0.25,
     lr_rampup_length           = 0.05,
     noise_ramp_length          = 0.75,
-    regularize_noise_weight    = 1e2,
+    regularize_noise_weight    = 1e5,
     verbose                    = False,
     device: torch.device
 ):
@@ -105,9 +105,9 @@ def interpolation(
     hair_features = vgg16(masked_hair_img, resize_images=False, return_lpips=True)
 
     # Loading the projection of images to save time when debugging
-    w_h = torch.from_numpy(np.load("projected_w_p.npz")['w']).to('cuda')  # (18,512)
-    w_p = torch.from_numpy(np.load("projected_w_h.npz")['w']).to('cuda')  # (18,512)
-    print(w_h.shape)
+    w_h = torch.from_numpy(np.load("img122-project-18/projected_w.npz")['w'][0]).to('cuda')  # (18,512)
+    w_p = torch.from_numpy(np.load("img143-project-18/projected_w.npz")['w'][0]).to('cuda')  # (18,512)
+
     # w_h = project(G, hair, device=torch.device('cuda'))[-1]
     # w_p = project(G, identity, device=torch.device('cuda'))[-1]
     #

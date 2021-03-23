@@ -73,6 +73,8 @@ def project(
     w_out = torch.zeros([num_steps] + list(w_opt.shape[1:]), dtype=torch.float32, device=device)
     optimizer = torch.optim.Adam([w_opt] + list(noise_bufs.values()), betas=(0.9, 0.999), lr=initial_learning_rate)
 
+    distances = []
+
     # Init noise.
     for buf in noise_bufs.values():
         buf[:] = torch.randn_like(buf)
@@ -113,6 +115,8 @@ def project(
                 if noise.shape[2] <= 8:
                     break
                 noise = F.avg_pool2d(noise, kernel_size=2)
+
+        distances.append(dist.item())
         loss = dist + reg_loss * regularize_noise_weight
 
         # Step
@@ -130,7 +134,7 @@ def project(
                 buf -= buf.mean()
                 buf *= buf.square().mean().rsqrt()
 
-    return w_out.repeat([1, G.mapping.num_ws, 1])
+    return w_out.repeat([1, G.mapping.num_ws, 1]), distances
 
 #----------------------------------------------------------------------------
 
@@ -206,9 +210,76 @@ def run_projection(
     PIL.Image.fromarray(synth_image, 'RGB').save(f'{outdir}/proj.png')
     np.savez(f'{outdir}/projected_w.npz', w=projected_w.unsqueeze(0).cpu().numpy())
 
+@click.command()
+@click.option('--network', 'network_pkl', help='Network pickle filename', required=True)
+@click.option('--target-folder', 'target_folder', help='Target image file to project to', required=True, metavar='DIR')
+@click.option('--num-steps',              help='Number of optimization steps', type=int, default=1000, show_default=True)
+@click.option('--seed',                   help='Random seed', type=int, default=303, show_default=True)
+@click.option('--outdir',                 help='Where to save the output images', required=True, metavar='DIR')
+def run_batch_projection(
+    network_pkl: str,
+    target_folder: str,
+    outdir: str,
+    seed: int,
+    num_steps: int
+):
+    """Project given image to the latent space of pretrained network pickle.
+
+    Examples:
+
+    \b
+    python projector.py --outdir=out --target=~/mytargetimg.png \\
+        --network=https://nvlabs-fi-cdn.nvidia.com/stylegan2-ada-pytorch/pretrained/ffhq.pkl
+    """
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+
+    # Load networks.
+    print('Loading networks from "%s"...' % network_pkl)
+    device = torch.device('cuda')
+    with dnnlib.util.open_url(network_pkl) as fp:
+        G = legacy.load_network_pkl(fp)['G_ema'].requires_grad_(False).to(device) # type: ignore
+
+    for target_fname in os.listdir(target_folder):
+
+        # Load target image.
+        target_pil = PIL.Image.open(target_folder + '/' + target_fname).convert('RGB')
+        w, h = target_pil.size
+        s = min(w, h)
+        target_pil = target_pil.crop(((w - s) // 2, (h - s) // 2, (w + s) // 2, (h + s) // 2))
+        target_pil = target_pil.resize((G.img_resolution, G.img_resolution), PIL.Image.LANCZOS)
+        target_uint8 = np.array(target_pil, dtype=np.uint8)
+
+        # Optimize projection.
+        start_time = perf_counter()
+        projected_w_steps, distances = project(
+            G,
+            target=torch.tensor(target_uint8.transpose([2, 0, 1]), device=device), # pylint: disable=not-callable
+            num_steps=num_steps,
+            device=device,
+            verbose=True
+        )
+        print (f'Elapsed: {(perf_counter()-start_time):.1f} s')
+
+        # Render debug output: optional video and projected image and W vector.
+        os.makedirs(outdir, exist_ok=True)
+
+        imgNum = target_fname.split('.')[0]
+        # Save final projected frame and W vector.
+        target_pil.save(f'{outdir}/{imgNum}-target.png')
+        projected_w = projected_w_steps[-1]
+        synth_image = G.synthesis(projected_w.unsqueeze(0), noise_mode='const')
+        synth_image = (synth_image + 1) * (255/2)
+        synth_image = synth_image.permute(0, 2, 3, 1).clamp(0, 255).to(torch.uint8)[0].cpu().numpy()
+        PIL.Image.fromarray(synth_image, 'RGB').save(f'{outdir}/{imgNum}-proj.png')
+        np.savez(f'{outdir}/{imgNum}-projected_w.npz', w=projected_w.unsqueeze(0).cpu().numpy())
+        np.save(f'{outdir}/{imgNum}-dist.npy', np.stack(distances))
+
+
 #----------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    run_projection() # pylint: disable=no-value-for-parameter
+    # run_projection() # pylint: disable=no-value-for-parameter
+    run_batch_projection()
 
 #----------------------------------------------------------------------------

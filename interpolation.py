@@ -105,19 +105,24 @@ def interpolation(
     hair_features = vgg16(masked_hair_img, resize_images=False, return_lpips=True)
 
     # Loading the projection of images to save time when debugging
-    w_h_path = Path("male/{}/18x512/{}-projected_w.npz".format(hair_img_filename, hair_img_filename))
-    w_p_path = Path("male/{}/18x512/{}-projected_w.npz".format(identity_img_filename, identity_img_filename))
+    w_h_path = Path("generated-male/{}.npy".format(hair_img_filename))
+    w_p_path = Path("generated-male/{}.npy".format(identity_img_filename))
+
+    # w_h_path = Path("male/{}/18x512/{}-projected_w.npz".format(hair_img_filename, hair_img_filename))
+    # w_p_path = Path("male/{}/18x512/{}-projected_w.npz".format(identity_img_filename, identity_img_filename))
 
     if w_h_path.exists():
-        w_h = torch.from_numpy(np.load(w_h_path)['w'][0]).to('cuda')
+        # w_h = torch.from_numpy(np.load(w_h_path)['w'][0]).to('cuda')
         # w_h = torch.from_numpy(np.load(w_h_path)['w']).to('cuda')
+        w_h = torch.from_numpy(np.load(w_h_path)[0]).to('cuda')
     else:
         w_h = project_18(G, hair, device=torch.device('cuda'))[-1]
         np.savez(w_h_path, w=w_h.cpu().numpy())
 
     if w_p_path.exists():
-        w_p = torch.from_numpy(np.load(w_p_path)['w'][0]).to('cuda')
+        # w_p = torch.from_numpy(np.load(w_p_path)['w'][0]).to('cuda')
         # w_p = torch.from_numpy(np.load(w_p_path)['w']).to('cuda')
+        w_p = torch.from_numpy(np.load(w_p_path)[0]).to('cuda')
     else:
         w_p = project_18(G, identity, device=torch.device('cuda'))[-1]
         np.savez(w_p_path, w=w_p.cpu().numpy())
@@ -309,22 +314,21 @@ def run_interpolation(
 
 if __name__ == "__main__":
 
-    prefix = 'male/'
-    imgNumbers = os.listdir(prefix)
+    prefix = 'generated-male/'
+    # imgNumbers = os.listdir(prefix)
+    imgNames = filter(lambda x: '.png' in x, os.listdir(prefix))
 
-    for img1 in imgNumbers:
-        for img2 in imgNumbers:
+    for img1 in imgNames:
+        for img2 in imgNames:
             if img1 == img2: continue
-            run_interpolation(hair_fname=prefix + img1 + '/' + img1 + '.jpg',
-                              identity_fname=prefix + img2 + '/' + img2 + '.jpg',
+            run_interpolation(hair_fname=prefix + img1,
+                              identity_fname=prefix + img2,
                               network_pkl="ffhq.pkl",
-                              outdir="male-output-dir",
+                              outdir="generated-male-output-dir",
                               save_video=False,
                               num_steps=300,
                               stop=100,
                               seed=303)
-
-        break
 
     # max_horizontal_imgs = 6
     # img_paths = sorted(glob.glob("male_q512/*.png"))

@@ -60,11 +60,6 @@ def interpolation(
     # Setup noise inputs.
     noise_bufs = {name: buf for (name, buf) in G.synthesis.named_buffers() if 'noise_const' in name}
 
-    # Load VGG16 feature detector.
-    # url = 'https://nvlabs-fi-cdn.nvidia.com/stylegan2-ada-pytorch/pretrained/metrics/vgg16.pt'
-    # with dnnlib.util.open_url(url) as f:
-    #     vgg16 = torch.jit.load(f).eval().to(device)
-
     seg_channel_dict = {
         'h': 0,
         'i': 1,
@@ -107,12 +102,6 @@ def interpolation(
     # Loading the projection of images to save time when debugging
     w_h = torch.from_numpy(np.load("img122-project-18/projected_w.npz")['w'][0]).to('cuda')  # (18,512)
     w_p = torch.from_numpy(np.load("img143-project-18/projected_w.npz")['w'][0]).to('cuda')  # (18,512)
-
-    # w_h = project(G, hair, device=torch.device('cuda'))[-1]
-    # w_p = project(G, identity, device=torch.device('cuda'))[-1]
-    #
-    # np.savez(f'projected_w_h.npz', w=w_h.cpu().numpy())
-    # np.savez(f'projected_w_p.npz', w=w_p.cpu().numpy())
 
     q_opt = torch.nn.Parameter(torch.randn(size=w_p.shape, dtype=torch.float32, requires_grad=True, device=device))
 

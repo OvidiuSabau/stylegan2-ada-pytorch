@@ -316,7 +316,7 @@ if __name__ == "__main__":
 
     prefix = 'generated-male/'
     # imgNumbers = os.listdir(prefix)
-    imgNames = filter(lambda x: '.png' in x, os.listdir(prefix))
+    imgNames = list(filter(lambda x: '.png' in x, os.listdir(prefix)))
 
     for img1 in imgNames:
         for img2 in imgNames:

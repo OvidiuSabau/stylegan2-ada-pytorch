@@ -83,7 +83,9 @@ def generate_images(
     with dnnlib.util.open_url(network_pkl) as f:
         G = legacy.load_network_pkl(f)['G_ema'].to(device) # type: ignore
 
-    os.makedirs(outdir, exist_ok=True)
+    # os.makedirs(outdir, exist_ok=True)
+    os.makedirs(outdir + '/images/', exist_ok=True)
+    os.makedirs(outdir + '/ws/', exist_ok=True)
 
     # Synthesize the result of a W projection.
     if projected_w is not None:
@@ -116,9 +118,12 @@ def generate_images(
     for seed_idx, seed in enumerate(seeds):
         print('Generating image for seed %d (%d/%d) ...' % (seed, seed_idx, len(seeds)))
         z = torch.from_numpy(np.random.RandomState(seed).randn(1, G.z_dim)).to(device)
-        img = G(z, label, truncation_psi=truncation_psi, noise_mode=noise_mode)
+        ws = G.mapping(z, label, truncation_psi=truncation_psi)
+        img = G.synthesis(ws, noise_mode=noise_mode)
+        np.save(f'{outdir}/ws/seed{seed:04d}.npy', ws.cpu().numpy())
+        # img = G(z, label, truncation_psi=truncation_psi, noise_mode=noise_mode)
         img = (img.permute(0, 2, 3, 1) * 127.5 + 128).clamp(0, 255).to(torch.uint8)
-        PIL.Image.fromarray(img[0].cpu().numpy(), 'RGB').save(f'{outdir}/seed{seed:04d}.png')
+        PIL.Image.fromarray(img[0].cpu().numpy(), 'RGB').save(f'{outdir}/images/seed{seed:04d}.png')
 
 
 #----------------------------------------------------------------------------

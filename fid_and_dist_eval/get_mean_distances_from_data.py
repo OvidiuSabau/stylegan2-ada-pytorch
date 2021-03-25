@@ -1,0 +1,30 @@
+import pandas as pd
+import numpy as np
+
+columns = ['hair', 'identity', 'hair_dist', 'identity_dist', 'dist']
+df_512 = pd.read_csv('dist_data_512.csv', names=columns)
+df_18x512 = pd.read_csv('dist_data_18x512.csv', names=columns)
+df_proj_512 = pd.read_csv('dist_data_projections_512.csv', names=columns)
+df_proj_18x512 = pd.read_csv('dist_data_projections_18x512.csv', names=columns)
+df_stargan = pd.read_csv('dist_data_stargan.csv', names=columns)
+
+print('MEAN HAIR DIST:')
+print('512: {:.4f}'.format(np.mean(df_512['hair_dist'])))
+print('18x512: {:.4f}'.format(np.mean(df_18x512['hair_dist'])))
+print('p512: {:.4f}'.format(np.mean(df_proj_512['hair_dist'])))
+print('p18x512: {:.4f}'.format(np.mean(df_proj_18x512['hair_dist'])))
+print('star: {:.4f}'.format(np.mean(df_stargan['hair_dist'])))
+print()
+print('MEAN IDENTITY DIST:')
+print('512: {:.4f}'.format(np.mean(df_512['identity_dist'])))
+print('18x512: {:.4f}'.format(np.mean(df_18x512['identity_dist'])))
+print('p512: {:.4f}'.format(np.mean(df_proj_512['identity_dist'])))
+print('p18x512: {:.4f}'.format(np.mean(df_proj_18x512['identity_dist'])))
+print('star: {:.4f}'.format(np.mean(df_stargan['identity_dist'])))
+print()
+print('MEAN DIST:')
+print('512: {:.4f}'.format(np.mean(df_512['dist'])))
+print('18x512: {:.4f}'.format(np.mean(df_18x512['dist'])))
+print('p512: {:.4f}'.format(np.mean(df_proj_512['dist'])))
+print('p18x512: {:.4f}'.format(np.mean(df_proj_18x512['dist'])))
+print('star: {:.4f}'.format(np.mean(df_stargan['dist'])))

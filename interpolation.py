@@ -1,12 +1,4 @@
-# Copyright (c) 2021, NVIDIA CORPORATION.  All rights reserved.
-#
-# NVIDIA CORPORATION and its licensors retain all intellectual property
-# and proprietary rights in and to this software, related documentation
-# and any modifications thereto.  Any use, reproduction, disclosure or
-# distribution of this software and related documentation without an express
-# license agreement from NVIDIA CORPORATION is strictly prohibited.
-
-"""Project given image to the latent space of pretrained network pickle."""
+"""Produce target image from hair and identity images."""
 
 import copy
 import glob
@@ -104,10 +96,11 @@ def interpolation(
     masked_hair_img = masked_hair_img.to(torch.uint8)
     hair_features = vgg16(masked_hair_img, resize_images=False, return_lpips=True)
 
-    # Loading the projection of images to save time when debugging
+    # Loading the projection of generated images to save time when debugging
     w_h_path = Path("generated-male/{}.npy".format(hair_img_filename))
     w_p_path = Path("generated-male/{}.npy".format(identity_img_filename))
-
+    
+    # Loading the projection of real images
     # w_h_path = Path("male/{}/18x512/{}-projected_w.npz".format(hair_img_filename, hair_img_filename))
     # w_p_path = Path("male/{}/18x512/{}-projected_w.npz".format(identity_img_filename, identity_img_filename))
 
@@ -165,12 +158,9 @@ def interpolation(
         if target_image.shape[2] > 256:
             target_image = F.interpolate(target_image, size=(256, 256), mode='area')
 
-        # TODO: img -> masked_img
-
         hair_target_image = apply_seg_mask(target_image, seg_channel_dict['h'])
         identity_target_image = apply_seg_mask(target_image, seg_channel_dict['i'])
 
-        # print("running target features through vgg")
         # Features for synth images.
         target_hair_features = vgg16(hair_target_image, resize_images=False, return_lpips=True)
         target_identity_features = vgg16(identity_target_image, resize_images=False, return_lpips=True)
@@ -181,7 +171,8 @@ def interpolation(
 
         hair_distances.append(hair_dist.item())
         identity_distances.append(identity_dist.item())
-
+        
+        # loss function 
         dist = alpha1 * hair_dist + alpha2 * identity_dist
 
         # Noise regularization.
@@ -236,14 +227,6 @@ def run_interpolation(
     stop: int,
     num_steps: int
 ):
-    """Project given image to the latent space of pretrained network pickle.
-
-    Examples:
-
-    \b
-    python projector.py --outdir=out --target=~/mytargetimg.png \\
-        --network=https://nvlabs-fi-cdn.nvidia.com/stylegan2-ada-pytorch/pretrained/ffhq.pkl
-    """
     np.random.seed(seed)
     torch.manual_seed(seed)
 
@@ -261,7 +244,8 @@ def run_interpolation(
     hair_pil = hair_pil.resize((G.img_resolution, G.img_resolution), PIL.Image.LANCZOS)
     hair_uint8 = np.array(hair_pil, dtype=np.uint8)
     hair_img_filename = hair_fname.split('/')[1].split('.')[0]
-
+    
+    # Load identity image.
     identity_pil = PIL.Image.open(identity_fname).convert('RGB')
     w, h = identity_pil.size
     s = min(w, h)
@@ -270,7 +254,7 @@ def run_interpolation(
     identity_uint8 = np.array(identity_pil, dtype=np.uint8)
     identity_img_filename = identity_fname.split('/')[1].split('.')[0]
 
-    # Optimize projection.
+    # Optimize interpolation.
     start_time = perf_counter()
     projected_w_steps, hair_distances, identity_distances = interpolation(
         G,
@@ -285,7 +269,7 @@ def run_interpolation(
     )
     print (f'Elapsed: {(perf_counter()-start_time):.1f} s')
 
-    # Render debug output: optional video and projected image and W vector.
+    # Create video from results
     os.makedirs(outdir, exist_ok=True)
     # if save_video:
     #     video = imageio.get_writer('{}/proj_i{}_h{}.mp4'.format(outdir, identity_img_filename, hair_img_filename), mode='I', fps=10, codec='libx264', bitrate='16M')
@@ -304,6 +288,7 @@ def run_interpolation(
     np.save('{}/synth_i{}_h{}-distances.npy'.format(outdir, identity_img_filename, hair_img_filename), np.concatenate((np.expand_dims(hair_distances, -1), np.expand_dims(identity_distances, -1)), axis=-1))
 
     projected_w = projected_w_steps[-1]
+    # create image from last style embedding q
     synth_image = G.synthesis(projected_w.unsqueeze(0), noise_mode='const')
     synth_image = (synth_image + 1) * (255/2)
     synth_image = synth_image.permute(0, 2, 3, 1).clamp(0, 255).to(torch.uint8)[0].cpu().numpy()
@@ -313,7 +298,7 @@ def run_interpolation(
 #----------------------------------------------------------------------------
 
 if __name__ == "__main__":
-
+    # running interpolation for all combinations of images
     prefix = 'generated-male/'
     # imgNumbers = os.listdir(prefix)
     imgNames = list(filter(lambda x: '.png' in x, os.listdir(prefix)))
@@ -329,7 +314,9 @@ if __name__ == "__main__":
                               num_steps=300,
                               stop=100,
                               seed=303)
-
+    
+    # below is some code used to generate grids 
+    
     # max_horizontal_imgs = 6
     # img_paths = sorted(glob.glob("male_q512/*.png"))
     # order = sorted([img_p.split('.')[0] for img_p in glob.glob("male_6/*.jpg")])
